@@ -27,3 +27,6 @@ debug/
 # Logs
 logs/
 *.log
+
+# Playwright browsers
+/ms-playwright/

@@ -1,0 +1,46 @@
+services:
+  # NORDVPN
+  vpn:
+    image: ghcr.io/bubuntux/nordvpn # this image is based on alpine and has nordvpn cli installed
+    container_name: nordvpn
+    cap_add: [NET_ADMIN, NET_RAW] # required for nordvpn to work
+    devices:
+      - /dev/net/tun
+    environment:
+      - TOKEN=${NORDVPN_TOKEN}
+      - CONNECT=Peru
+      - TECHNOLOGY=NordLynx
+      # Allows communication between containers in the same network
+      # 172.0.0.0/8 is the default subnet for docker networks, and
+      # 192.168.0.0/16 is a common private IP range used in home networks
+      - NETWORK=172.0.0.0/8,192.168.0.0/16
+    ports:
+      # seace-runner ports 
+      - "3000:3000"
+    networks:
+      - internal
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "https://api.nordvpn.com/vpn/check/full"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+  
+  seace-runner:
+    build:
+      context: ./seace-runner
+    container_name: seace-runner
+    # shares the network of the vpn container, so all traffic goes through the vpn (Peru)
+    network_mode: "service:vpn"
+    depends_on:
+      - vpn
+    environment:
+      - AUTH_TOKEN=${SEACE_AUTH_TOKEN}
+    restart: unless-stopped
+
+networks:
+  internal:
+    driver: bridge
