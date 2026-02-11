@@ -89,6 +89,9 @@ export async function runSearch(page, run_id) {
 
   await page.waitForTimeout(2000 + Math.random() * 1000);
 
+  // Extra delay: Give it a moment to ensure results start rendering
+  await page.waitForTimeout(3000);
+
   // Wait for results table to have rows
   await page.waitForFunction(
     () => {
@@ -102,7 +105,7 @@ export async function runSearch(page, run_id) {
         !rows[0].classList.contains("ui-datatable-empty-message")
       );
     },
-    { timeout: 30000 }
+    { timeout: 60000 }
   );
 
   console.log(`[${run_id}] ✓ Results loaded`);

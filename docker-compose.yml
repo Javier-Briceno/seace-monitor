@@ -35,6 +35,8 @@ services:
     container_name: seace-runner
     # shares the network of the vpn container, so all traffic goes through the vpn (Peru)
     network_mode: "service:vpn"
+    volumes:
+      - ./seace-runner/debug:/app/debug
     depends_on:
       - vpn
     environment:
