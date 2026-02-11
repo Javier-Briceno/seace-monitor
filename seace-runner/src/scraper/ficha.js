@@ -186,7 +186,57 @@ async function parseFicha(page) {
       return results;
     }
 
-        /**
+    /**
+     * Parses the "Lista de Documentos" table specifically.
+     * Extracts download metadata from onclick attributes.
+     */
+    function parseDocumentosTable(tbody) {
+      const documentos = [];
+      const rows = tbody.querySelectorAll("tr:not(.ui-datatable-empty-message)");
+      
+      rows.forEach(row => {
+        const cells = row.querySelectorAll("td");
+        if (cells.length < 5) return;
+
+        const nro = cells[0]?.textContent?.trim();
+        const etapa = cells[1]?.textContent?.trim();
+        const documento = cells[2]?.textContent?.trim();
+        const fechaPublicacion = cells[4]?.textContent?.trim();
+
+        // Parse download link from onclick="descargaDocGeneral('uuid','tipo','filename')"
+        let archivoData = null;
+        const linkWithOnclick = cells[3]?.querySelector('a[onclick*="descargaDocGeneral"]');
+        
+        if (linkWithOnclick) {
+          const onclick = linkWithOnclick.getAttribute('onclick');
+          const match = onclick.match(/descargaDocGeneral\('([^']+)','([^']+)','([^']+)'\)/);
+          
+          if (match) {
+            const [, uuid, tipo, filename] = match;
+            const tamanioText = linkWithOnclick.textContent?.trim() || "";
+            
+            archivoData = {
+              uuid: uuid,
+              tipo: tipo,
+              filename: filename,
+              tamanio: tamanioText
+            };
+          }
+        }
+
+        documentos.push({
+          Nro: nro || null,
+          Etapa: etapa || null,
+          Documento: documento || null,
+          Archivo: archivoData,
+          "Fecha de publicación": fechaPublicacion || null
+        });
+      });
+
+      return documentos;
+    }
+
+    /**
      * Decides if a table is key-value or columnar.
      * Key-value: first cell of each row is a label (th-like), second is value.
      * Columnar: has a clear header row with multiple columns.
@@ -299,6 +349,15 @@ async function parseFicha(page) {
         if (cronograma.length > 0) sections.cronograma = cronograma;
       }
     }
+    
+    // Always try to grab Documentos by its known tbody ID as a safety net
+    if (!sections.lista_de_documentos && !sections.documentos) {
+      const docTbody = document.querySelector("#tbFicha\\:dtDocumentos_data");
+      if (docTbody) {
+        const documentos = parseDocumentosTable(docTbody);
+        if (documentos.length > 0) sections.documentos = documentos;
+      }
+    }
 
     return sections;
   });
@@ -329,6 +388,49 @@ async function closeFicha(page, run_id) {
   );
 
   await page.waitForTimeout(500 + Math.random() * 1000);
+
+  // Ensure we're back on the correct tab after closing ficha
+  // Sometimes closing ficha can switch tabs, especially after last item
+  await page.evaluate(() => {
+    const tabLinks = document.querySelectorAll('.ui-tabs-nav li');
+    const tabPanels = document.querySelectorAll('.ui-tabs-panel');
+    
+    // Check if we're on the correct tab (index 1 = "Buscador de Procedimientos")
+    const activeTabIndex = Array.from(tabLinks).findIndex(tab => 
+      tab.classList.contains('ui-tabs-selected') || tab.classList.contains('ui-state-active')
+    );
+    
+    if (activeTabIndex !== 1) {
+      console.log(`[TAB FIX] Wrong tab active (${activeTabIndex}), switching to tab 1`);
+      
+      // Deactivate all
+      tabLinks.forEach((tab) => {
+        tab.classList.remove('ui-tabs-selected', 'ui-state-active');
+        tab.setAttribute('aria-expanded', 'false');
+      });
+      tabPanels.forEach((panel) => {
+        panel.style.display = 'none';
+        panel.classList.add('ui-helper-hidden');
+      });
+      
+      // Activate correct tab (index 1)
+      if (tabLinks[1]) {
+        tabLinks[1].classList.add('ui-tabs-selected', 'ui-state-active');
+        tabLinks[1].setAttribute('aria-expanded', 'true');
+      }
+      if (tabPanels[1]) {
+        tabPanels[1].style.display = 'block';
+        tabPanels[1].classList.remove('ui-helper-hidden');
+      }
+      
+      const hiddenInput = document.querySelector('#tbBuscador_activeIndex');
+      if (hiddenInput) hiddenInput.value = '1';
+    }
+  });
+  
+  // Let tab settle
+  await page.waitForTimeout(300);
+  
   console.log(`[${run_id}] ✓ Back to results`);
 }
 
@@ -357,6 +459,39 @@ async function tryCloseFicha(page) {
       ).catch(() => {});
 
       await page.waitForTimeout(500 + Math.random() * 1000);
+
+      // Also ensure correct tab after error recovery
+      await page.evaluate(() => {
+        const tabLinks = document.querySelectorAll('.ui-tabs-nav li');
+        const tabPanels = document.querySelectorAll('.ui-tabs-panel');
+        
+        const activeTabIndex = Array.from(tabLinks).findIndex(tab => 
+          tab.classList.contains('ui-tabs-selected') || tab.classList.contains('ui-state-active')
+        );
+        
+        if (activeTabIndex !== 1) {
+          tabLinks.forEach((tab) => {
+            tab.classList.remove('ui-tabs-selected', 'ui-state-active');
+            tab.setAttribute('aria-expanded', 'false');
+          });
+          tabPanels.forEach((panel) => {
+            panel.style.display = 'none';
+            panel.classList.add('ui-helper-hidden');
+          });
+          
+          if (tabLinks[1]) {
+            tabLinks[1].classList.add('ui-tabs-selected', 'ui-state-active');
+            tabLinks[1].setAttribute('aria-expanded', 'true');
+          }
+          if (tabPanels[1]) {
+            tabPanels[1].style.display = 'block';
+            tabPanels[1].classList.remove('ui-helper-hidden');
+          }
+          
+          const hiddenInput = document.querySelector('#tbBuscador_activeIndex');
+          if (hiddenInput) hiddenInput.value = '1';
+        }
+      }).catch(() => {});
     }
   } catch (e) {
     console.error("[ficha] Could not navigate back:", e.message);

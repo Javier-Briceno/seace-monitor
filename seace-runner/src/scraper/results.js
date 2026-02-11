@@ -113,28 +113,29 @@ async function checkIfLastPage(page) {
 
 /**
  * Clicks the next page button and waits for the table to reload.
+ * 
+ * PrimeFaces pagination fix: instead of clicking .ui-paginator-next,
+ * we click the specific page number to avoid stale element issues.
  */
 async function goToNextPage(page, run_id, currentPage) {
   console.log(`[${run_id}] Going to page ${currentPage + 1}...`);
 
-  await page.evaluate(() => {
-    const nextBtn = document.querySelector(
-      "#tbBuscador\\:idFormBuscarProceso\\:dtProcesos_paginator_bottom .ui-paginator-next"
-    );
-    if (nextBtn) nextBtn.click();
-  });
+  // Simple approach that worked in the old monolith version
+  // Just click the next button and wait for the table to update
+  await page.click('#tbBuscador\\:idFormBuscarProceso\\:dtProcesos_paginator_bottom .ui-paginator-next');
 
-  await page.waitForTimeout(1500 + Math.random() * 1000);
+  // Wait for page transition
+  await page.waitForTimeout(1500);
 
   // Wait for new rows to appear
   await page.waitForFunction(
-    (selector) => {
-      const tbody = document.querySelector(selector);
+    () => {
+      const tbody = document.querySelector('tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]');
       if (!tbody) return false;
-      return tbody.querySelectorAll("tr:not(.ui-datatable-empty-message)").length > 0;
+      const rows = tbody.querySelectorAll('tr:not(.ui-datatable-empty-message)');
+      return rows.length > 0;
     },
-    { timeout: 10000 },
-    RESULTS_TBODY
+    { timeout: 10000 }
   );
 
   console.log(`[${run_id}] ✓ Page ${currentPage + 1} loaded`);
