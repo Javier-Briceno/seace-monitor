@@ -124,7 +124,7 @@ async function goToNextPage(page, run_id, currentPage) {
     if (nextBtn) nextBtn.click();
   });
 
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1500 + Math.random() * 1000);
 
   // Wait for new rows to appear
   await page.waitForFunction(

@@ -1,14 +1,19 @@
+import fs from "fs";
+
 const RESULTS_TBODY = 'tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]';
+const FICHA_FORM    = "#tbFicha\\:idFormFichaSeleccion";
 
 /**
  * Clicks on the "Ficha de Selección" link for a given row,
- * extracts all data from the ficha page, then navigates back.
- *
+ * takes a debug screenshot, extracts all sections dynamically,
+ * then navigates back.
+ * 
  * Returns null if extraction fails (item is still added without ficha data).
  */
 export async function extractFicha(page, rowIndex, run_id) {
   try {
     await openFicha(page, rowIndex, run_id);
+    await screenshotFicha(page, rowIndex);
     const fichaData = await parseFicha(page);
     await closeFicha(page, run_id);
 
@@ -71,99 +76,259 @@ async function openFicha(page, rowIndex, run_id) {
   );
 
   await page.waitForSelector("#tbFicha\\:idFormFichaSeleccion", { timeout: 10000 });
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1500 + Math.random() * 1000);
+
 }
 
 /**
- * Parses all data sections from the ficha page.
+ * Takes a full-page screenshot of the ficha and saves it as:
+ * debug/ficha_item{rowIndex + 1}.png
  * 
- * The ficha has 4 semi-structured sections:
- * - Información General       (key-value table)
- * - Información de la Entidad (key-value table)
- * - Información del Procedimiento (key-value table, some nested tables)
- * - Cronograma                (structured table with columns)
+ * This makes it easy to compare screenshots with JSON output
+ * and discover new/unexpected section structures.
+ */
+async function screenshotFicha(page, rowIndex) {
+  try {
+    if (!fs.existsSync("debug")) {
+      fs.mkdirSync("debug", { recursive: true });
+    }
+    const path = `debug/ficha_item${rowIndex + 1}.png`;
+    await page.screenshot({ path, fullPage: true });
+    console.log(`[ficha] Screenshot saved: ${path}`);
+  } catch (e) {
+    console.error("[ficha] Could not save screenshot:", e.message);
+  }
+}
+
+/**
+ * Dynamically parses ALL sections from the ficha page.
+ *
+ * Instead of relying on hardcoded j_idt IDs (which change between SEACE
+ * deployments), we find sections by their visible heading text and infer
+ * the table type automatically:
+ *
+ *   - Key-value tables  → { "Label": "value", ... }
+ *   - Columnar tables   → [ { col1: val, col2: val, ... }, ... ]
+ *
+ * This handles any number of sections, including new ones like
+ * "Entidad Contratante" that weren't present before.
  */
 async function parseFicha(page) {
   return await page.evaluate(() => {
 
-    // ── Helper: parse a generic key-value table ──────────────────────────────
-    function parseKeyValueTable(tableSelector) {
-      const result = {};
-      const table = document.querySelector(tableSelector);
-      if (!table) return result;
+    // ── Helpers ──────────────────────────────
 
-      table.querySelectorAll("tbody tr").forEach(row => {
+    /**
+     * Parses a key-value table: each row has (label cell, value cell).
+     * Handles nested tables in value cells (e.g. "Lugar y cuenta de pago").
+     */
+    function parseKeyValueTable(table) {
+      const result = {};
+      table.querySelectorAll("tbody tr, tr").forEach(row => {
         const cells = row.querySelectorAll("td");
         if (cells.length < 2) return;
 
         const label = cells[0]?.textContent?.trim().replace(/:$/, "");
         if (!label) return;
 
-        // Handle "Lugar y cuenta de pago" which has a nested table
         const innerTable = cells[1]?.querySelector("table");
         if (innerTable) {
-          const rows = innerTable.querySelectorAll("tr");
-          const banco  = rows[1]?.cells[0]?.textContent?.trim() || null;
-          const cuenta = rows[1]?.cells[1]?.textContent?.trim() || null;
-          result[label] = { banco, cuenta };
+          // Nested table: extract as { col1: val, col2: val }
+          const headerRow = innerTable.querySelector("tr");
+          const dataRow   = innerTable.querySelectorAll("tr")[1];
+          if (headerRow && dataRow) {
+            const headers = [...headerRow.querySelectorAll("td, th")].map(c => c.textContent.trim());
+            const values  = [...dataRow.querySelectorAll("td")].map(c => c.textContent.trim());
+            const nested  = {};
+            headers.forEach((h, i) => { if (h) nested[h] = values[i] || null; });
+            result[label] = nested;
+          } else {
+            result[label] = cells[1]?.textContent?.trim() || null;
+          }
         } else {
-          result[label] = cells[1]?.textContent?.trim() || null;
+          // Fix: trim whitespace to avoid "8,361,815.10Soles" → "8,361,815.10 Soles"
+          result[label] = cells[1]?.textContent?.replace(/\s+/g, " ").trim() || null;
         }
       });
-
       return result;
     }
 
-    // ── Helper: parse the cronograma table ───────────────────────────────────
-    function parseCronograma() {
-      const cronograma = [];
-      const tbody = document.querySelector("#tbFicha\\:dtCronograma_data");
-      if (!tbody) return cronograma;
+    /**
+     * Parses a columnar table (like Cronograma, Entidad Contratante):
+     * uses the first row as headers, remaining rows as data.
+     */
+    function parseColumnarTable(table) {
+      const rows    = table.querySelectorAll("tbody tr, tr");
+      const headers = [];
+      const results = [];
 
-      tbody.querySelectorAll("tr").forEach(row => {
-        const cells = row.querySelectorAll("td");
-        if (cells.length < 3) return;
-
-        const etapaText  = cells[0]?.textContent?.trim() || "";
-        const etapaLines = etapaText.split("\n").map(l => l.trim()).filter(Boolean);
-
-        cronograma.push({
-          etapa:        etapaLines[0] || "",
-          tipo:         etapaLines[1] || null,
-          fecha_inicio: cells[1]?.textContent?.trim() || null,
-          fecha_fin:    cells[2]?.textContent?.trim() || null
+      rows.forEach((row, i) => {
+        const cells = row.querySelectorAll("td, th");
+        if (i === 0) {
+          cells.forEach(c => headers.push(c.textContent.trim()));
+          return;
+        }
+        const entry = {};
+        cells.forEach((c, j) => {
+          const key = headers[j] || `col_${j}`;
+          // For Cronograma: split "Etapa\nA través del SEACE" into etapa + tipo
+          if (j === 0 && headers[j]?.toLowerCase().includes("etapa")) {
+            const lines = c.textContent.trim().split("\n").map(l => l.trim()).filter(Boolean);
+            entry["Etapa"] = lines[0] || null;
+            entry["Tipo"]  = lines[1] || null;
+          } else {
+            entry[key] = c.textContent.replace(/\s+/g, " ").trim() || null;
+          }
         });
+        results.push(entry);
       });
 
-      return cronograma;
+      return results;
     }
 
-    // ── Parse all sections ────────────────────────────────────────────────────
-    return {
-      informacion_general:       parseKeyValueTable("#tbFicha\\:j_idt30"),
-      informacion_entidad:       parseKeyValueTable("#tbFicha\\:j_idt73"),
-      informacion_procedimiento: parseKeyValueTable("#tbFicha\\:j_idt97"),
-      cronograma:                parseCronograma()
-    };
+        /**
+     * Decides if a table is key-value or columnar.
+     * Key-value: first cell of each row is a label (th-like), second is value.
+     * Columnar: has a clear header row with multiple columns.
+     */
+    function detectTableType(table) {
+      const firstRow    = table.querySelector("tbody tr, tr");
+      if (!firstRow) return "empty";
+
+      const cells       = firstRow.querySelectorAll("td, th");
+      const headerRow   = table.querySelector("thead tr") || table.querySelector("tr");
+      const hasHeaders  = [...(headerRow?.querySelectorAll("th") || [])].length > 0;
+      const hasTwoColsOnly = cells.length === 2;
+
+      // If there's a <thead> with multiple headers, it's columnar
+      if (hasHeaders && !hasTwoColsOnly) return "columnar";
+
+      // If first row has class or style suggesting it's a header row
+      const allRows = table.querySelectorAll("tbody tr");
+      if (allRows.length > 0) {
+        // Count rows with exactly 2 cells (key-value pattern)
+        const twoColRows = [...allRows].filter(r => r.querySelectorAll("td").length === 2).length;
+        if (twoColRows / allRows.length > 0.6) return "key-value";
+      }
+
+      // Default: if first row has > 2 cells, assume columnar
+      return cells.length > 2 ? "columnar" : "key-value";
+    }
+
+    // ── Find and parse all sections ──────────────────────────────────────────
+
+    const ficha  = document.querySelector("#tbFicha\\:idFormFichaSeleccion");
+    if (!ficha) return { error: "Ficha form not found in DOM" };
+
+    const sections = {};
+
+    // Find all visible section headings (fieldset legends or div headings)
+    const headingSelectors = [
+      "fieldset legend",
+      ".ui-fieldset-legend",
+      ".ui-panel-title",
+      "h3", "h4",
+      // SEACE uses plain text in certain span/div patterns
+      ".card-header",
+    ];
+
+    // Strategy: find all <fieldset> containers first (most reliable)
+    const fieldsets = ficha.querySelectorAll("fieldset");
+    fieldsets.forEach(fieldset => {
+      const legend = fieldset.querySelector("legend, .ui-fieldset-legend");
+      const title  = legend?.textContent?.trim();
+      if (!title) return;
+
+      const table = fieldset.querySelector("table");
+      if (!table) return;
+
+      const type = detectTableType(table);
+      const key  = title.toLowerCase()
+        .replace(/\s+/g, "_")
+        .replace(/[áàä]/g, "a").replace(/[éèë]/g, "e")
+        .replace(/[íìï]/g, "i").replace(/[óòö]/g, "o")
+        .replace(/[úùü]/g, "u").replace(/[ñ]/g, "n")
+        .replace(/[^a-z0-9_]/g, "");
+
+      sections[key] = type === "columnar"
+        ? parseColumnarTable(table)
+        : parseKeyValueTable(table);
+    });
+
+    // Strategy fallback: if no fieldsets found, look for panels or divs with headings
+    if (Object.keys(sections).length === 0) {
+      const panels = ficha.querySelectorAll(".ui-panel, .card, [class*='section']");
+      panels.forEach(panel => {
+        const titleEl = panel.querySelector(".ui-panel-title, .card-title, h3, h4");
+        const title   = titleEl?.textContent?.trim();
+        if (!title) return;
+
+        const table = panel.querySelector("table");
+        if (!table) return;
+
+        const type = detectTableType(table);
+        const key  = title.toLowerCase()
+          .replace(/\s+/g, "_")
+          .replace(/[^a-z0-9_]/g, "");
+
+        sections[key] = type === "columnar"
+          ? parseColumnarTable(table)
+          : parseKeyValueTable(table);
+      });
+    }
+
+    // Always try to grab Cronograma by its known tbody ID as a safety net
+    if (!sections.cronograma) {
+      const cronTbody = document.querySelector("#tbFicha\\:dtCronograma_data");
+      if (cronTbody) {
+        // Reconstruct as if it were a table
+        const rows = cronTbody.querySelectorAll("tr");
+        const cronograma = [];
+        rows.forEach(row => {
+          const cells = row.querySelectorAll("td");
+          if (cells.length < 3) return;
+          const etapaText  = cells[0]?.textContent?.trim() || "";
+          const etapaLines = etapaText.split("\n").map(l => l.trim()).filter(Boolean);
+          cronograma.push({
+            Etapa:        etapaLines[0] || "",
+            Tipo:         etapaLines[1] || null,
+            "Fecha Inicio": cells[1]?.textContent?.trim() || null,
+            "Fecha Fin":    cells[2]?.textContent?.trim() || null
+          });
+        });
+        if (cronograma.length > 0) sections.cronograma = cronograma;
+      }
+    }
+
+    return sections;
   });
 }
 
 /**
  * Clicks the "Regresar" button to go back to the results table.
+ * Uses text search instead of hardcoded j_idt ID (more robust).
  */
 async function closeFicha(page, run_id) {
   await page.evaluate(() => {
+    // Find "Regresar" button by text (more stable than j_idt22 which can change)
+    const buttons = document.querySelectorAll("button, a.ui-button, .ui-button");
+    for (const btn of buttons) {
+      if (btn.textContent?.trim().includes("Regresar")) {
+        btn.click();
+        return;
+      }
+    }
+    // Fallback to known ID
     const btn = document.querySelector("#tbFicha\\:j_idt22");
     if (btn) btn.click();
   });
 
-  // Wait until ficha form disappears
   await page.waitForFunction(
     () => !document.querySelector("#tbFicha\\:idFormFichaSeleccion"),
     { timeout: 10000 }
   );
 
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(500 + Math.random() * 1000);
   console.log(`[${run_id}] ✓ Back to results`);
 }
 
@@ -172,9 +337,16 @@ async function closeFicha(page, run_id) {
  */
 async function tryCloseFicha(page) {
   try {
-    const isOnFicha = await page.$('#tbFicha\\:j_idt22');
+    const isOnFicha = await page.$("#tbFicha\\:idFormFichaSeleccion");
     if (isOnFicha) {
       await page.evaluate(() => {
+        const buttons = document.querySelectorAll("button, a.ui-button, .ui-button");
+        for (const btn of buttons) {
+          if (btn.textContent?.trim().includes("Regresar")) {
+            btn.click();
+            return;
+          }
+        }
         const btn = document.querySelector("#tbFicha\\:j_idt22");
         if (btn) btn.click();
       });
@@ -184,7 +356,7 @@ async function tryCloseFicha(page) {
         { timeout: 10000 }
       ).catch(() => {});
 
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(500 + Math.random() * 1000);
     }
   } catch (e) {
     console.error("[ficha] Could not navigate back:", e.message);

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { launchBrowser, closeBrowser, captureDebugInfo } from "../scraper/browser.js";
+import { launchBrowser, createPage, closeBrowser, captureDebugInfo } from "../scraper/browser.js";
 import { navigateToSEACE, applyFilters, runSearch } from "../scraper/filters.js";
 import { scrapeAllPages } from "../scraper/results.js";
 
@@ -28,7 +28,7 @@ seaceRouter.post("/export", async (req, res) => {
 
     // 1. Launch browser
     browser = await launchBrowser();
-    const page = await browser.newPage();
+    const page = await createPage(browser);
 
     // 2. Navigate to SEACE and activate search tab
     await navigateToSEACE(page, run_id);

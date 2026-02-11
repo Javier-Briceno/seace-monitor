@@ -1,72 +1,76 @@
-import { chromium } from "playwright";
+import { firefox } from "playwright";
+import { startLocalProxy, stopLocalProxy } from "./proxy.js";
 import fs from "fs";
 
-const PROXY_SERVER = process.env.PROXY_SERVER || null;
-const PROXY_USER   = process.env.PROXY_USER   || null;
-const PROXY_PASS   = process.env.PROXY_PASS   || null;
+let proxyServer = null;
 
-/**
- * Launches a Playwright Chromium browser.
- * Automatically configures proxy if PROXY_SERVER is set in env.
- */
 export async function launchBrowser() {
-  const options = { headless: true };
+  // Start local HTTP CONNECT proxy BEFORE Firefox.
+  // Firefox's network stack also bypasses VPN routing in Docker,
+  // but unlike Chromium, Firefox accepts proxy at context level
+  // and uses a different TLS fingerprint that SEACE doesn't block.
+  proxyServer = await startLocalProxy(1080);
 
-  if (PROXY_SERVER) {
-    options.proxy = {
-      server: PROXY_SERVER,
-      ...(PROXY_USER && { username: PROXY_USER }),
-      ...(PROXY_PASS && { password: PROXY_PASS })
-    };
-    console.log(`[browser] Using proxy: ${PROXY_SERVER}`);
-  }
+  const browser = await firefox.launch({
+    headless: true,
+  });
 
-  return await chromium.launch(options);
+  return browser;
 }
 
-/**
- * Safely closes the browser if it's still open.
- */
+export async function createPage(browser) {
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    proxy: { server: "http://127.0.0.1:1080" },
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0",
+    locale: "es-PE",
+    timezoneId: "America/Lima"
+  });
+
+  const page = await context.newPage();
+  return page;
+}
+
 export async function closeBrowser(browser) {
-  if (browser) {
-    try {
-      await browser.close();
-    } catch (e) {
-      console.error("[browser] Error closing browser:", e.message);
-    }
+  try {
+    if (browser) await browser.close();
+  } catch (e) {
+    console.error("[browser] Error closing browser:", e.message);
   }
+
+  await stopLocalProxy(proxyServer);
+  proxyServer = null;
 }
 
-/**
- * On error: captures a screenshot and HTML dump for debugging.
- * Saves to /debug directory with the run_id as filename.
- */
 export async function captureDebugInfo(browser, run_id) {
-  const safeId = run_id.replace(/:/g, "-");
-  const screenshotPath = `debug/${safeId}.png`;
-  const htmlPath = `debug/${safeId}.html`;
+  const debugDir = "debug";
+  let screenshotPath = null;
+  let htmlPath = null;
 
   try {
-    if (!fs.existsSync("debug")) {
-      fs.mkdirSync("debug", { recursive: true });
+    if (!fs.existsSync(debugDir)) {
+      fs.mkdirSync(debugDir, { recursive: true });
     }
 
-    if (browser) {
-      const pages = browser.contexts()[0]?.pages() || [];
-      const page = pages[0];
+    const safeId = run_id.replace(/:/g, "-");
+    screenshotPath = `${debugDir}/${safeId}.png`;
+    htmlPath = `${debugDir}/${safeId}.html`;
 
-      if (page && !page.isClosed()) {
-        await page.screenshot({ path: screenshotPath, fullPage: true });
-        console.log(`[browser] Debug screenshot: ${screenshotPath}`);
+    const contexts = browser?.contexts() || [];
+    const page = contexts[0]?.pages()[0];
 
-        const html = await page.content();
-        await fs.promises.writeFile(htmlPath, html, "utf8");
-        console.log(`[browser] Debug HTML: ${htmlPath}`);
-      }
+    if (page && !page.isClosed()) {
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      console.log(`[browser] Debug screenshot: ${screenshotPath}`);
+
+      const html = await page.content();
+      await fs.promises.writeFile(htmlPath, html, "utf8");
+      console.log(`[browser] Debug HTML: ${htmlPath}`);
     }
   } catch (e) {
-    console.error("[browser] Could not capture debug info:", e.message);
+    console.error("[browser] Error capturing debug info:", e.message);
   }
 
-  return { screenshot: screenshotPath, html: htmlPath };
+  return { screenshotPath, htmlPath };
 }

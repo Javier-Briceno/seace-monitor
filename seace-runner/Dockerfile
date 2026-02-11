@@ -5,7 +5,7 @@ WORKDIR /app
 # Install dependencies first (better Docker layer caching)
 COPY package.json package-lock.json* ./
 RUN npm install
-RUN npx playwright install --with-deps chromium
+RUN npx playwright install --with-deps chromium firefox
 
 # Copy source code
 COPY . .

@@ -8,9 +8,9 @@ const SEACE_URL =
 export async function navigateToSEACE(page, run_id) {
   console.log(`[${run_id}] Navigating to SEACE...`);
 
-  await page.goto(SEACE_URL, { waitUntil: "networkidle", timeout: 60000 });
+  await page.goto(SEACE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForSelector(".ui-tabs", { timeout: 15000 });
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(2000 + Math.random() * 1000);
 
   console.log(`[${run_id}] Activating search tab...`);
 
@@ -51,7 +51,7 @@ export async function navigateToSEACE(page, run_id) {
     if (hiddenInput) hiddenInput.value = "1";
   });
 
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(3000 + Math.random() * 1000);
   console.log(`[${run_id}] ✓ Tab activated`);
 }
 
@@ -63,7 +63,7 @@ export async function applyFilters(page, { departamento, objeto, anio }, run_id)
   // Expand "Búsqueda Avanzada" to access the Departamento field
   console.log(`[${run_id}] Expanding Búsqueda Avanzada...`);
   await page.click('.ui-fieldset-legend:has-text("Búsqueda Avanzada")');
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(1000 + Math.random() * 1000);
 
   if (departamento) await setDepartamento(page, departamento, run_id);
   if (objeto)       await setObjeto(page, objeto, run_id);
@@ -77,7 +77,7 @@ export async function runSearch(page, run_id) {
   console.log(`[${run_id}] Running search...`);
 
   await page.click("#tbBuscador\\:idFormBuscarProceso\\:btnBuscarSelToken");
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(1000 + Math.random() * 1000);
 
   // Wait for AJAX loading overlay to disappear
   await page.waitForSelector(".ui-blockui-content", {
@@ -87,7 +87,7 @@ export async function runSearch(page, run_id) {
     console.log(`[${run_id}] No block overlay detected, continuing...`);
   });
 
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(2000 + Math.random() * 1000);
 
   // Wait for results table to have rows
   await page.waitForFunction(
@@ -127,7 +127,7 @@ async function setDepartamento(page, departamento, run_id) {
   await page.click(
     `.ui-selectonemenu-panel:visible .ui-selectonemenu-item:has-text("${departamento}")`
   );
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(500 + Math.random() * 1000);
 
   console.log(`[${run_id}] ✓ Departamento set`);
 }
@@ -178,7 +178,7 @@ async function setObjeto(page, objeto, run_id) {
     throw new Error(`Option not found: ${texto}`);
   }, normalized);
 
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(500 + Math.random() * 1000);
   console.log(`[${run_id}] ✓ Objeto set`);
 }
 
@@ -206,7 +206,7 @@ async function setAnio(page, anio, run_id) {
   await page.click(
     `.ui-selectonemenu-panel .ui-selectonemenu-item:has-text("${anio}")`
   );
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(500 + Math.random() * 1000);
 
   console.log(`[${run_id}] ✓ Año set`);
 }
@@ -225,5 +225,5 @@ async function waitForDropdown(page) {
     },
     { timeout: 5000 }
   );
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(300 + Math.random() * 1000);
 }

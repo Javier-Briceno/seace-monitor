@@ -44,3 +44,5 @@ services:
 networks:
   internal:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.mtu: "1420" # MTU is set to 1420 to avoid fragmentation issues with the VPN connection
