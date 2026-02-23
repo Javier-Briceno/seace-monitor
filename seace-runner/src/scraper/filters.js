@@ -1,232 +1,251 @@
-const SEACE_URL =
-  "https://prod2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/buscadorPublico.xhtml";
+import { log } from './logger.js';
+
+const SEACE_URL = "https://prod2.seace.gob.pe/seacebus-uiwd-pub/buscadorPublico/buscadorPublico.xhtml";
 
 /**
- * Navigates to SEACE and activates the "Buscador de Procedimientos" tab.
- * SEACE uses PrimeFaces (JSF) which requires direct DOM manipulation to switch tabs.
+ * Navigates to SEACE and activates the "Buscador de Procedimientos de Seleccion" tab.
+ * SEACE uses PrimeFaces (JSF).
+ * This function depends on the PrimeFaces TabView widget (window.widget_tbBuscador).
+ * If the widget is not available, it throws an error.
  */
-export async function navigateToSEACE(page, run_id) {
-  console.log(`[${run_id}] Navigating to SEACE...`);
+export async function navigateToSEACE(page) {
+  log(`Navigating to SEACE...`);
 
-  await page.goto(SEACE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForSelector(".ui-tabs", { timeout: 15000 });
+  await page.goto(SEACE_URL, { waitUntil: "networkidle", timeout: 60000 });
+
+  await page.waitForFunction(
+    () => window.widget_tbBuscador !== undefined,
+    {timeout: 15000}
+  );
+  
   await page.waitForTimeout(2000 + Math.random() * 1000);
+  log(`Activating search tab...`);
 
-  console.log(`[${run_id}] Activating search tab...`);
-
-  // PrimeFaces tabs don't respond to normal clicks in headless mode.
-  // We manipulate the DOM directly to activate tab index 1.
   await page.evaluate(() => {
-    const tabLinks  = document.querySelectorAll(".ui-tabs-nav li");
-    const tabPanels = document.querySelectorAll(".ui-tabs-panel");
-
-    // Deactivate all tabs
-    tabLinks.forEach(tab => {
-      tab.classList.remove("ui-tabs-selected", "ui-state-active", "ui-state-focus");
-      tab.setAttribute("aria-expanded", "false");
-    });
-
-    // Hide all panels
-    tabPanels.forEach(panel => {
-      panel.style.display = "none";
-      panel.classList.add("ui-helper-hidden");
-      panel.setAttribute("aria-hidden", "true");
-    });
-
-    // Activate tab 1 ("Buscador de Procedimientos de Selección")
-    if (tabLinks[1]) {
-      tabLinks[1].classList.add("ui-tabs-selected", "ui-state-active");
-      tabLinks[1].setAttribute("aria-expanded", "true");
-    }
-
-    // Show corresponding panel
-    if (tabPanels[1]) {
-      tabPanels[1].style.display = "block";
-      tabPanels[1].classList.remove("ui-helper-hidden");
-      tabPanels[1].setAttribute("aria-hidden", "false");
-    }
-
-    // Update hidden input that PrimeFaces uses to track active tab
-    const hiddenInput = document.querySelector("#tbBuscador_activeIndex");
-    if (hiddenInput) hiddenInput.value = "1";
+    const tabWidget = window.widget_tbBuscador;
+    
+    if(!tabWidget) throw new Error('TabView Widget not found');
+    // Buscador de Procedimientos de Seleccion is tab 1
+    tabWidget.select(1);
   });
 
   await page.waitForTimeout(3000 + Math.random() * 1000);
-  console.log(`[${run_id}] ✓ Tab activated`);
+  log(`Tab activated`);
 }
 
 /**
  * Applies search filters: departamento, objeto, anio.
  * Each filter uses a PrimeFaces selectOneMenu dropdown.
  */
-export async function applyFilters(page, { departamento, objeto, anio }, run_id) {
-  // Expand "Búsqueda Avanzada" to access the Departamento field
-  console.log(`[${run_id}] Expanding Búsqueda Avanzada...`);
-  await page.click('.ui-fieldset-legend:has-text("Búsqueda Avanzada")');
+export async function applyFilters(page, { departamento, objeto, anio }) {
+  // Expand "Busqueda Avanzada" to access the Departamento field
+  log(`Expanding Búsqueda Avanzada...`);
+  await page.evaluate(() => {
+    const fieldsetId = 'tbBuscador:idFormBuscarProceso:j_idt232';
+    const fieldsetVar = 'widget_' + fieldsetId.replace(/:/g, '_');
+    const fieldset = window[fieldsetVar];
+    if (fieldset && fieldset.cfg.collapsed) {
+      fieldset.toggle();
+    }
+  });
   await page.waitForTimeout(1000 + Math.random() * 1000);
 
-  if (departamento) await setDepartamento(page, departamento, run_id);
-  if (objeto)       await setObjeto(page, objeto, run_id);
-  if (anio)         await setAnio(page, anio, run_id);
+  if (departamento) await setDepartamento(page, departamento);
+  if (objeto)       await setObjeto(page, objeto);
+  if (anio)         await setAnio(page, anio);
 }
 
 /**
  * Clicks the search button and waits for results to load.
+ * 
+ * SEACE uses reCAPTCHA v3. There are TWO buttons:
+ * 1. btnBuscarSelToken (visible) - loads reCAPTCHA token
+ * 2. btnBuscarSel (hidden) - actual AJAX submit
+ * 
+ * We need to wait for the token to load, then click the hidden submit button
+ * to trigger the PrimeFaces AJAX
  */
 export async function runSearch(page, run_id) {
-  console.log(`[${run_id}] Running search...`);
+  log(`Running search...`);
 
-  await page.click("#tbBuscador\\:idFormBuscarProceso\\:btnBuscarSelToken");
-  await page.waitForTimeout(1000 + Math.random() * 1000);
+  await page.click("#tbBuscador\\:idFormBuscarProceso\\:btnBuscarSelToken")
+  log(`Token button clicked, waiting for reCAPTCHA...`);
 
-  // Wait for AJAX loading overlay to disappear
-  await page.waitForSelector(".ui-blockui-content", {
-    state: "hidden",
-    timeout: 30000
-  }).catch(() => {
-    console.log(`[${run_id}] No block overlay detected, continuing...`);
+  // Wait for reCAPTCHA token to be loaded into hidden field
+  try {
+    await page.waitForFunction(
+      () => {
+        const tokenField = document.querySelector("#tbBuscador\\:idFormBuscarProceso\\:tokenBusProSel");
+        return tokenField && tokenField.value && tokenField.value.length > 100;
+      },
+      { timeout: 15000 }
+    );
+    log(`reCAPTCHA token loaded`);
+  } catch (e) {
+    console.warn(`Warning: reCAPTCHA token not detected, continuing anyway...`);
+  }
+
+  await page.waitForTimeout(1500);
+
+  log(`Triggering PrimeFaces AJAX search...`);
+  await page.evaluate(() => {
+    document.querySelector('#tbBuscador\\:idFormBuscarProceso\\:btnBuscarSel').click();
   });
+  
+  log(`AJAX search triggered, waiting for results...`);
+  
+  await page.waitForTimeout(500);
 
-  await page.waitForTimeout(2000 + Math.random() * 1000);
+  await page.waitForFunction(() => 
+    window.PrimeFaces?.ajax?.Queue?.isEmpty?.() === true,
+  {timeout: 45000});
 
-  // Extra delay: Give it a moment to ensure results start rendering
-  await page.waitForTimeout(3000);
-
-  // Wait for results table to have rows
-  await page.waitForFunction(
-    () => {
-      const tbody = document.querySelector(
-        'tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]'
-      );
-      if (!tbody) return false;
+  log(`Waiting for results table...`);
+  
+  try {
+    // Wait for results table to appear and contain either data rows or an empty-message row
+    await page.waitForFunction(
+      () => {
+        const tbody = document.querySelector(
+          'tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]'
+        );
+        if (!tbody) return false;
+        
+        const rows = tbody.querySelectorAll("tr");
+        
+        if (rows.length === 0) return false;
+        
+        // If first row is the empty message, search finished with no results
+        const firstRow = rows[0];
+        if (firstRow.classList.contains("ui-datatable-empty-message")) {
+          return true; // search completed, no results found
+        }
+        
+        const cells = firstRow.querySelectorAll("td");
+        if (cells.length === 0) return false;
+        
+        const hasContent = Array.from(cells).some(cell => cell.textContent.trim().length > 0);
+        
+        return hasContent;
+      },
+      { timeout: 45000 }
+    );
+    
+    log(`Results table loaded with data`);
+    
+  } catch (e) {
+    log(`Timeout waiting for results table`);
+    
+    const debugInfo = await page.evaluate(() => {
+      const tbody = document.querySelector('tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]');
+      if (!tbody) return { error: "tbody not found" };
+      
       const rows = tbody.querySelectorAll("tr");
-      return (
-        rows.length > 0 &&
-        !rows[0].classList.contains("ui-datatable-empty-message")
-      );
-    },
-    { timeout: 60000 }
-  );
+      const tokenField = document.querySelector("#tbBuscador\\:idFormBuscarProceso\\:tokenBusProSel");
+      const departamentoLabel = document.querySelector("#tbBuscador\\:idFormBuscarProceso\\:departamento_label");
+      const objetoLabel = document.querySelector("#tbBuscador\\:idFormBuscarProceso\\:j_idt188_label");
+      const anioLabel = document.querySelector("#tbBuscador\\:idFormBuscarProceso\\:anioConvocatoria_label");
+      return {
+        rowCount: rows.length,
+        firstRowClasses: rows[0]?.className || "no first row",
+        firstRowText: rows[0]?.textContent?.substring(0, 100) || "no text",
+        tokenValue: tokenField?.value?.substring(0, 50) || "no token",
+        departamento: departamentoLabel?.textContent || "no depto",
+        objeto: objetoLabel?.textContent || "no objeto",
+        anio: anioLabel?.textContent || "no anio"
+      };
+    });
+    
+    log(`Debug info: ${JSON.stringify(debugInfo)}`);
+    throw e;
+  }
 
-  console.log(`[${run_id}] ✓ Results loaded`);
+  await page.waitForTimeout(1000);
+  
+  log(`Results loaded`);
 }
 
-// ─── Private helpers ──────────────────────────────────────────────────────────
+// -------- Private helpers --------
 
-async function setDepartamento(page, departamento, run_id) {
-  console.log(`[${run_id}] Setting Departamento: ${departamento}`);
+async function setDepartamento(page, departamento) {
+  log(`Setting Departamento: ${departamento}`);
 
-  const selector = await page.evaluate(() => {
-    const dept = document.querySelector(
-      "#tbBuscador\\:idFormBuscarProceso\\:departamento"
-    );
-    return dept ? "#tbBuscador\\:idFormBuscarProceso\\:departamento" : null;
-  });
-
-  if (!selector) throw new Error("Departamento dropdown not found");
-
-  await page.click(selector);
-  await waitForDropdown(page);
-  await page.click(
-    `.ui-selectonemenu-panel:visible .ui-selectonemenu-item:has-text("${departamento}")`
-  );
-  await page.waitForTimeout(500 + Math.random() * 1000);
-
-  console.log(`[${run_id}] ✓ Departamento set`);
-}
-
-async function setObjeto(page, objeto, run_id) {
-  console.log(`[${run_id}] Setting Objeto: ${objeto}`);
-
-  const selector = await page.evaluate(() => {
-    const selects = document.querySelectorAll(
-      "#tbBuscador\\:idFormBuscarProceso\\:pnlFiltro .ui-selectonemenu"
-    );
-    if (selects.length >= 2) {
-      return "#" + selects[1].id.replace(/:/g, "\\:");
+  await page.evaluate((value) => {
+    const widgetId = 'tbBuscador:idFormBuscarProceso:departamento';
+    const widgetVar = 'widget_' + widgetId.replace(/:/g, '_');
+    const widget = window[widgetVar];
+    if (widget) {
+      const selectElement = document.querySelector('#tbBuscador\\:idFormBuscarProceso\\:departamento_input');
+      if (selectElement) {
+        for (const option of selectElement.options) {
+          if (option.text === value) {
+            widget.selectValue(option.value);
+            return;
+          }
+        }
+        throw new Error(`Departamento ${value} not found`);
+      }
     }
-    return null;
-  });
+    throw new Error(`Widget not found for ${widgetId}`);
+  }, departamento);
 
-  if (!selector) throw new Error("Objeto dropdown not found");
+  await page.waitForTimeout(500 + Math.random() * 500);
+  log(`Departamento set`);
+}
 
-  await page.click(selector);
-  await waitForDropdown(page);
+async function setObjeto(page, objeto) {
+  log(`Setting Objeto: ${objeto}`);
 
-  // Normalize: "OBRA" → "Obra"
+  // Normalize: "OBRA" -> "Obra"
   const normalized = objeto.charAt(0).toUpperCase() + objeto.slice(1).toLowerCase();
 
-  await page.evaluate((texto) => {
-    const panels = document.querySelectorAll(".ui-selectonemenu-panel");
-    let visiblePanel = null;
-
-    for (const panel of panels) {
-      const style = window.getComputedStyle(panel);
-      if (style.display !== "none" && style.visibility !== "hidden") {
-        visiblePanel = panel;
-        break;
+  await page.evaluate((value) => {
+    const widgetId = 'tbBuscador:idFormBuscarProceso:j_idt188';
+    
+    const widgetVar = 'widget_' + widgetId.replace(/:/g, '_');
+    const widget = window[widgetVar];
+    if (widget) {
+      const selectElement = document.querySelector('#tbBuscador\\:idFormBuscarProceso\\:j_idt188_input');
+      if (selectElement) {
+        for (const option of selectElement.options) {
+          if (option.text === value) {
+            widget.selectValue(option.value);
+            return;
+          }
+        }
+        throw new Error(`Objeto ${value} not found`);
       }
     }
-
-    if (!visiblePanel) throw new Error("No visible dropdown panel found");
-
-    const items = visiblePanel.querySelectorAll(".ui-selectonemenu-item");
-    for (const item of items) {
-      if (item.innerText.trim() === texto) {
-        item.click();
-        return;
-      }
-    }
-
-    throw new Error(`Option not found: ${texto}`);
+    throw new Error(`Widget not found for ${widgetId}`);
   }, normalized);
 
-  await page.waitForTimeout(500 + Math.random() * 1000);
-  console.log(`[${run_id}] ✓ Objeto set`);
+  await page.waitForTimeout(500 + Math.random() * 500);
+  log(`Objeto set`);
 }
 
-async function setAnio(page, anio, run_id) {
-  console.log(`[${run_id}] Setting Año: ${anio}`);
+async function setAnio(page, anio) {
+  log(`Setting Año: ${anio}`);
 
-  const selector = await page.evaluate(() => {
-    const selects = document.querySelectorAll(
-      "#tbBuscador\\:idFormBuscarProceso\\:pnlFiltro .ui-selectonemenu"
-    );
-    for (let i = 0; i < selects.length; i++) {
-      const label =
-        selects[i].closest("td")?.previousElementSibling?.textContent || "";
-      if (label.includes("Año")) {
-        return "#" + selects[i].id.replace(/:/g, "\\:");
+  await page.evaluate((value) => {
+    const widgetId = 'tbBuscador:idFormBuscarProceso:anioConvocatoria';
+    
+    const widgetVar = 'widget_' + widgetId.replace(/:/g, '_');
+    const widget = window[widgetVar];
+    if (widget) {
+      const selectElement = document.querySelector('#tbBuscador\\:idFormBuscarProceso\\:anioConvocatoria_input');
+      if (selectElement) {
+        for (const option of selectElement.options) {
+          if (option.text === value) {
+            widget.selectValue(option.value);
+            return;
+          }
+        }
+        throw new Error(`Año ${value} not found`);
       }
     }
-    return null;
-  });
+    throw new Error(`Widget not found for ${widgetId}`);
+  }, anio);
 
-  if (!selector) throw new Error("Año dropdown not found");
-
-  await page.click(selector);
-  await waitForDropdown(page);
-  await page.click(
-    `.ui-selectonemenu-panel .ui-selectonemenu-item:has-text("${anio}")`
-  );
-  await page.waitForTimeout(500 + Math.random() * 1000);
-
-  console.log(`[${run_id}] ✓ Año set`);
-}
-
-async function waitForDropdown(page) {
-  await page.waitForFunction(
-    () => {
-      const panels = document.querySelectorAll(".ui-selectonemenu-panel");
-      for (const panel of panels) {
-        const style = window.getComputedStyle(panel);
-        if (style.display !== "none" && style.visibility !== "hidden") {
-          return panel.querySelectorAll(".ui-selectonemenu-item").length > 0;
-        }
-      }
-      return false;
-    },
-    { timeout: 5000 }
-  );
-  await page.waitForTimeout(300 + Math.random() * 1000);
+  await page.waitForTimeout(500 + Math.random() * 500);
+  log(`Año set`);
 }
