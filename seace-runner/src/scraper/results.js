@@ -1,45 +1,39 @@
 import { extractFicha } from "./ficha.js";
+import { log } from './logger.js';
 
 const RESULTS_TBODY = 'tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]';
 
-/**
- * Iterates through ALL pages of results.
- * For each row: extracts basic data + navigates into ficha tecnica.
- * Returns flat array of all items across all pages.
- */
-export async function scrapeAllPages(page, run_id) {
+/** Scrape all paginated results and return a flat array of items. */
+export async function scrapeAllPages(page) {
   const allItems = [];
   let currentPage = 1;
   let hasMorePages = true;
 
   while (hasMorePages) {
-    console.log(`[${run_id}] Scraping page ${currentPage}...`);
+    log(`Scraping page ${currentPage}...`);
 
-    const pageItems = await scrapePage(page, run_id, currentPage);
+    const pageItems = await scrapePage(page, currentPage);
     allItems.push(...pageItems);
 
     const isLastPage = await checkIfLastPage(page);
 
     if (isLastPage) {
-      console.log(`[${run_id}] Last page reached. Total pages: ${currentPage}`);
+      log(`Last page reached. Total pages: ${currentPage}`);
       hasMorePages = false;
     } else {
-      await goToNextPage(page, run_id, currentPage);
+      await goToNextPage(page, currentPage);
       currentPage++;
     }
   }
 
-  console.log(`[${run_id}] ✓ Scraping complete. Total items: ${allItems.length}`);
+  log(`Scraping complete. Total items: ${allItems.length}`);
   return allItems;
 }
 
-// ─── Private helpers ──────────────────────────────────────────────────────────
+// Private helpers
 
-/**
- * Scrapes all rows on the current page.
- * For each row, also fetches the ficha tecnica.
- */
-async function scrapePage(page, run_id, pageNumber) {
+/** Scrape every row in the current page, including ficha details. */
+async function scrapePage(page, pageNumber) {
   const items = [];
 
   const rowCount = await page.evaluate((selector) => {
@@ -48,21 +42,19 @@ async function scrapePage(page, run_id, pageNumber) {
     return tbody.querySelectorAll("tr:not(.ui-datatable-empty-message)").length;
   }, RESULTS_TBODY);
 
-  console.log(`[${run_id}] Page ${pageNumber}: ${rowCount} rows found`);
+  log(`Page ${pageNumber}: ${rowCount} rows found`);
 
   for (let i = 0; i < rowCount; i++) {
-    console.log(`[${run_id}] Processing item ${i + 1}/${rowCount} (page ${pageNumber})...`);
+    log(`Processing item ${i + 1}/${rowCount} (page ${pageNumber})...`);
 
-    // Extract basic data from the table row
     const basicData = await extractBasicData(page, i);
 
     if (!basicData) {
-      console.log(`[${run_id}] ⚠ Could not extract item ${i + 1}, skipping`);
+      log(`Could not extract item ${i + 1}, skipping`);
       continue;
     }
 
-    // Navigate into ficha tecnica and extract detailed data
-    const fichaData = await extractFicha(page, i, run_id);
+    const fichaData = await extractFicha(page, i);
 
     items.push({ ...basicData, ficha: fichaData });
   }
@@ -70,9 +62,7 @@ async function scrapePage(page, run_id, pageNumber) {
   return items;
 }
 
-/**
- * Extracts the basic columns from a result row (no navigation needed).
- */
+/** Extract base columns from one result row without page navigation. */
 async function extractBasicData(page, rowIndex) {
   return await page.evaluate(
     ({ selector, index }) => {
@@ -99,44 +89,32 @@ async function extractBasicData(page, rowIndex) {
   );
 }
 
-/**
- * Returns true if the "next page" paginator button is disabled.
- */
+/** Return true when the paginator "next" button is disabled. */
 async function checkIfLastPage(page) {
   return await page.evaluate(() => {
-    const nextBtn = document.querySelector(
-      "#tbBuscador\\:idFormBuscarProceso\\:dtProcesos_paginator_bottom .ui-paginator-next"
-    );
-    return nextBtn ? nextBtn.classList.contains("ui-state-disabled") : true;
+    const paginatorId = "tbBuscador:idFormBuscarProceso:dtProcesos";
+    const paginatorEl = "widget_" + paginatorId.replace(/:/g, '_');
+    const paginator = window[paginatorEl];
+    if (!paginator) throw new Error('DataTable paginator widget not found')
+    return paginator.getPaginator().nextLink[0].classList.contains('ui-state-disabled');
   });
 }
 
-/**
- * Clicks the next page button and waits for the table to reload.
- * 
- * PrimeFaces pagination fix: instead of clicking .ui-paginator-next,
- * we click the specific page number to avoid stale element issues.
- */
-async function goToNextPage(page, run_id, currentPage) {
-  console.log(`[${run_id}] Going to page ${currentPage + 1}...`);
+/** Click paginator next and wait until the PrimeFaces AJAX queue is empty. */
+async function goToNextPage(page, currentPage) {
+  log(`Going to page ${currentPage + 1}...`);
 
-  // Simple approach that worked in the old monolith version
-  // Just click the next button and wait for the table to update
-  await page.click('#tbBuscador\\:idFormBuscarProceso\\:dtProcesos_paginator_bottom .ui-paginator-next');
+  await page.evaluate(() => {
+    const paginatorId = "tbBuscador:idFormBuscarProceso:dtProcesos";
+    const paginatorEl = "widget_" + paginatorId.replace(/:/g, '_');
+    const paginator = window[paginatorEl];
+    if (!paginator) throw new Error('DataTable paginator widget not found');
+    paginator.getPaginator().nextLink.click();
+  })
 
-  // Wait for page transition
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() =>
+    window.PrimeFaces?.ajax?.Queue?.isEmpty?.() === true,
+  {timeout: 45000});
 
-  // Wait for new rows to appear
-  await page.waitForFunction(
-    () => {
-      const tbody = document.querySelector('tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]');
-      if (!tbody) return false;
-      const rows = tbody.querySelectorAll('tr:not(.ui-datatable-empty-message)');
-      return rows.length > 0;
-    },
-    { timeout: 10000 }
-  );
-
-  console.log(`[${run_id}] ✓ Page ${currentPage + 1} loaded`);
+  log(`Page ${currentPage + 1} loaded`);
 }
