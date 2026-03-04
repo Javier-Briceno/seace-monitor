@@ -54,9 +54,10 @@ async function scrapePage(page, pageNumber) {
       continue;
     }
 
-    const fichaData = await extractFicha(page, i);
+    //const fichaData = await extractFicha(page, i);
 
-    items.push({ ...basicData, ficha: fichaData });
+    //items.push({ ...basicData, ficha: fichaData });
+    items.push({ ...basicData});
   }
 
   return items;
@@ -81,8 +82,13 @@ async function extractBasicData(page, rowIndex) {
         fecha_publicacion:  cols[2]?.innerText?.trim() || "",
         nomenclatura:       cols[3]?.innerText?.trim() || "",
         reiniciado_desde:   cols[4]?.innerText?.trim() || "",
-        objeto:             cols[5]?.innerText?.trim() || "",
-        descripcion:        cols[6]?.innerText?.trim() || ""
+        objeto_de_contratacion: cols[5]?.innerText?.trim() || "",
+        descripcion:        cols[6]?.innerText?.trim() || "",
+        codigo_snip: cols[7]?.innerText?.trim() || "",
+        codigo_cui: cols[8]?.innerText?.trim() || "",
+        monto: cols[9]?.innerText?.trim() || "",
+        moneda: cols[10]?.innerText?.trim() || "",
+        version_seace: cols[11]?.innerText?.trim() || ""
       };
     },
     { selector: RESULTS_TBODY, index: rowIndex }

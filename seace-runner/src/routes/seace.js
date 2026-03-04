@@ -2,6 +2,7 @@ import { Router } from "express";
 import { launchBrowser, createPage, closeBrowser, captureDebugInfo } from "../scraper/browser.js";
 import { navigateToSEACE, applyFilters, runSearch } from "../scraper/filters.js";
 import { scrapeAllPages } from "../scraper/results.js";
+import { log } from '../scraper/logger.js';
 
 export const seaceRouter = Router();
 
@@ -17,11 +18,10 @@ export const seaceRouter = Router();
  * }
  */
 seaceRouter.post("/export", async (req, res) => {
-  const run_id = new Date().toISOString();
   let browser = null;
 
-  console.log(`\n[${run_id}] === NEW EXPORT REQUEST ===`);
-  console.log(`[${run_id}] Filters:`, req.body);
+  log(`=== NEW EXPORT REQUEST ===`);
+  log(`Filters: ${JSON.stringify(req.body)}`);
 
   try {
     const { departamento, objeto, anio } = req.body;
@@ -31,40 +31,38 @@ seaceRouter.post("/export", async (req, res) => {
     const page = await createPage(browser);
 
     // 2. Navigate to SEACE and activate search tab
-    await navigateToSEACE(page, run_id);
+    await navigateToSEACE(page);
 
     // 3. Apply filters (departamento, objeto, año)
-    await applyFilters(page, { departamento, objeto, anio }, run_id);
+    await applyFilters(page, { departamento, objeto, anio });
 
     // 4. Run search
-    await runSearch(page, run_id);
+    await runSearch(page);
 
     // 5. Scrape all pages (results + ficha for each item)
-    const allItems = await scrapeAllPages(page, run_id);
+    const allItems = await scrapeAllPages(page);
 
     await closeBrowser(browser);
 
-    console.log(`[${run_id}] === EXPORT COMPLETE: ${allItems.length} items ===\n`);
+    log(`=== EXPORT COMPLETE: ${allItems.length} items ===\n`);
 
     return res.json({
-      run_id,
       total: allItems.length,
       meta: {
         fuente: "SEACE",
-        scraped_at: run_id,
+        scraped_at: new Date().toISOString(),
         filtros_aplicados: { departamento, objeto, anio }
       },
       items: allItems
     });
 
   } catch (err) {
-    console.error(`[${run_id}] FATAL ERROR:`, err.message);
+    console.error(`FATAL ERROR:`, err.message);
 
-    const debugInfo = await captureDebugInfo(browser, run_id);
+    const debugInfo = await captureDebugInfo(browser);
     await closeBrowser(browser);
 
     return res.status(500).json({
-      run_id,
       error: err.message,
       debug: debugInfo
     });

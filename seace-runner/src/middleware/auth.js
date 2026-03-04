@@ -1,14 +1,13 @@
-const AUTH_TOKEN = process.env.AUTH_TOKEN || "";
+const SEACE_AUTH_TOKEN = process.env.SEACE_AUTH_TOKEN || "";
 
-/**
- * Bearer token authentication middleware.
- * If AUTH_TOKEN is not set, all requests are allowed (dev mode).
- */
+if(!SEACE_AUTH_TOKEN) throw new Error("SEACE_AUTH_TOKEN must be defined");
+
 export function authMiddleware(req, res, next) {
-  if (!AUTH_TOKEN) return next();
+  // AUTH TOKEN is not necessary on dev mode
+  if (!SEACE_AUTH_TOKEN) return next();
 
   const header = req.headers.authorization || "";
-  if (header === `Bearer ${AUTH_TOKEN}`) return next();
+  if (header === `Bearer ${SEACE_AUTH_TOKEN}`) { return next() }
 
   return res.status(401).json({ error: "Unauthorized" });
 }

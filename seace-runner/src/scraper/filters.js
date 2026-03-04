@@ -65,7 +65,7 @@ export async function applyFilters(page, { departamento, objeto, anio }) {
  * We need to wait for the token to load, then click the hidden submit button
  * to trigger the PrimeFaces AJAX
  */
-export async function runSearch(page, run_id) {
+export async function runSearch(page) {
   log(`Running search...`);
 
   await page.click("#tbBuscador\\:idFormBuscarProceso\\:btnBuscarSelToken")
@@ -200,12 +200,17 @@ async function setObjeto(page, objeto) {
   const normalized = objeto.charAt(0).toUpperCase() + objeto.slice(1).toLowerCase();
 
   await page.evaluate((value) => {
-    const widgetId = 'tbBuscador:idFormBuscarProceso:j_idt188';
-    
-    const widgetVar = 'widget_' + widgetId.replace(/:/g, '_');
+    // Find "Objeto de Contratación" dropdown by searching all selectOneMenu widgets
+    const widgetVar = Object.keys(window).find(key => {
+      if (!key.startsWith('widget_tbBuscador_idFormBuscarProceso_')) return false;
+      const w = window[key];
+      return w?.input?.[0]?.id?.includes('_input') && 
+            w?.options?.length === 5; // Objeto has exactly 5 options
+    });
+
     const widget = window[widgetVar];
     if (widget) {
-      const selectElement = document.querySelector('#tbBuscador\\:idFormBuscarProceso\\:j_idt188_input');
+      const selectElement = widget.input[0];
       if (selectElement) {
         for (const option of selectElement.options) {
           if (option.text === value) {

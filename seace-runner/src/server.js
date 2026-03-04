@@ -1,30 +1,24 @@
-import express from "express";
-import { authMiddleware } from "./middleware/auth.js";
-import { seaceRouter } from "./routes/seace.js";
+import express from 'express';
+import { authMiddleware } from './middleware/auth.js';
+import { seaceRouter } from './routes/seace.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json())
 
-// Health check - no auth required
-app.get("/health", (req, res) => {
-  res.json({ ok: true, timestamp: new Date().toISOString() });
+app.get('/health', (req, res) => {
+  res.json({status: true, timestamp: new Date().toISOString()})
+})
+
+app.use('/seace', authMiddleware, seaceRouter);
+
+app.get('/myip', async (req, res) => {
+  const response = await fetch('https://api.ipify.org?format=json');
+  const data = await response.json();
+  res.json(data);
 });
-
-// Test outbound connectivity
-app.get("/test-outbound", async (req, res) => {
-  try {
-    const r = await fetch("https://www.google.com");
-    res.json({ ok: true, status: r.status });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e) });
-  }
-});
-
-// SEACE routes - auth required
-app.use("/seace", authMiddleware, seaceRouter);
 
 app.listen(PORT, () => {
-  console.log(`SEACE Runner running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`)
 });
