@@ -54,10 +54,9 @@ async function scrapePage(page, pageNumber) {
       continue;
     }
 
-    //const fichaData = await extractFicha(page, i);
+    const fichaData = await extractFicha(page, i);
 
-    //items.push({ ...basicData, ficha: fichaData });
-    items.push({ ...basicData});
+    items.push({ ...basicData, ficha: fichaData });
   }
 
   return items;

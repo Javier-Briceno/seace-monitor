@@ -1,5 +1,5 @@
 import fs from "fs";
-
+import { log } from './logger.js';
 const RESULTS_TBODY = 'tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]';
 const FICHA_FORM    = "#tbFicha\\:idFormFichaSeleccion";
 
@@ -10,18 +10,18 @@ const FICHA_FORM    = "#tbFicha\\:idFormFichaSeleccion";
  * 
  * Returns null if extraction fails (item is still added without ficha data).
  */
-export async function extractFicha(page, rowIndex, run_id) {
+export async function extractFicha(page, rowIndex) {
   try {
-    await openFicha(page, rowIndex, run_id);
+    await openFicha(page, rowIndex);
     await screenshotFicha(page, rowIndex);
     const fichaData = await parseFicha(page);
-    await closeFicha(page, run_id);
+    await closeFicha(page);
 
-    console.log(`[${run_id}] ✓ Ficha extracted for item ${rowIndex + 1}`);
+    log(`Ficha extracted for item ${rowIndex + 1}`);
     return fichaData;
 
   } catch (err) {
-    console.error(`[${run_id}] ✗ Ficha error for item ${rowIndex + 1}:`, err.message);
+    console.error(`[Ficha] error for item ${rowIndex + 1}:`, err.message);
 
     // Try to navigate back if we're stuck on the ficha page
     await tryCloseFicha(page);
@@ -35,49 +35,26 @@ export async function extractFicha(page, rowIndex, run_id) {
 /**
  * Clicks the ficha icon for the row at rowIndex and waits for the ficha to load.
  */
-async function openFicha(page, rowIndex, run_id) {
-  const clickResult = await page.evaluate(
-    ({ selector, index }) => {
-      const tbody = document.querySelector(selector);
-      const rows = tbody.querySelectorAll("tr:not(.ui-datatable-empty-message)");
-      const row = rows[index];
-
-      if (!row) return { success: false, reason: "row not found" };
-
-      // Primary: click the ficha icon link
-      const link = row.querySelector('a:has(img[src*="fichaSeleccion"])');
-      if (link) {
-        link.click();
-        return { success: true, method: "ficha-icon" };
-      }
-
-      // Fallback: first commandlink in the row
-      const cmdLink = row.querySelector("a.ui-commandlink");
-      if (cmdLink) {
-        cmdLink.click();
-        return { success: true, method: "commandlink-fallback" };
-      }
-
-      return { success: false, reason: "no clickable link found" };
-    },
-    { selector: RESULTS_TBODY, index: rowIndex }
+async function openFicha(page, rowIndex) {
+  await page.waitForSelector(
+    `img[id*="grafichaSel"]`,
+    { timeout: 10000, state: 'attached' }
   );
 
-  if (!clickResult.success) {
-    throw new Error(`Could not open ficha: ${clickResult.reason}`);
-  }
+  const navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 })
 
-  console.log(`[${run_id}] Ficha click method: ${clickResult.method}`);
+  log(`Clicking ficha icon for row ${rowIndex}`);
+  page.evaluate((index) => {
+      const imgs = document.querySelectorAll(`img[id*="grafichaSel"]`);
+      const img = imgs[index];
+      if (!img) throw new Error(`Ficha icon not found for row ${index}`)  
+        img.parentElement.click();
+    }, rowIndex);
 
-  // Wait for ficha form to appear in DOM
-  await page.waitForFunction(
-    () => document.querySelector("#tbFicha\\:idFormFichaSeleccion") !== null,
-    { timeout: 10000 }
-  );
+  await navigationPromise;
 
-  await page.waitForSelector("#tbFicha\\:idFormFichaSeleccion", { timeout: 10000 });
-  await page.waitForTimeout(1500 + Math.random() * 1000);
-
+  // Confirm ficha loaded
+  await page.waitForSelector('#tbFicha\\:idFormFichaSeleccion', { timeout: 15000 });
 }
 
 /**
@@ -94,7 +71,7 @@ async function screenshotFicha(page, rowIndex) {
     }
     const path = `debug/ficha_item${rowIndex + 1}.png`;
     await page.screenshot({ path, fullPage: true });
-    console.log(`[ficha] Screenshot saved: ${path}`);
+    log(`[ficha] Screenshot saved: ${path}`);
   } catch (e) {
     console.error("[ficha] Could not save screenshot:", e.message);
   }
@@ -119,68 +96,127 @@ async function parseFicha(page) {
     // ── Helpers ──────────────────────────────
 
     /**
-     * Parses a key-value table: each row has (label cell, value cell).
-     * Handles nested tables in value cells (e.g. "Lugar y cuenta de pago").
+     * Cleans text values: removes extra whitespace and adds space before units.
      */
-    function parseKeyValueTable(table) {
-      const result = {};
-      table.querySelectorAll("tbody tr, tr").forEach(row => {
-        const cells = row.querySelectorAll("td");
-        if (cells.length < 2) return;
-
-        const label = cells[0]?.textContent?.trim().replace(/:$/, "");
-        if (!label) return;
-
-        const innerTable = cells[1]?.querySelector("table");
-        if (innerTable) {
-          // Nested table: extract as { col1: val, col2: val }
-          const headerRow = innerTable.querySelector("tr");
-          const dataRow   = innerTable.querySelectorAll("tr")[1];
-          if (headerRow && dataRow) {
-            const headers = [...headerRow.querySelectorAll("td, th")].map(c => c.textContent.trim());
-            const values  = [...dataRow.querySelectorAll("td")].map(c => c.textContent.trim());
-            const nested  = {};
-            headers.forEach((h, i) => { if (h) nested[h] = values[i] || null; });
-            result[label] = nested;
-          } else {
-            result[label] = cells[1]?.textContent?.trim() || null;
-          }
-        } else {
-          // Fix: trim whitespace to avoid "8,361,815.10Soles" → "8,361,815.10 Soles"
-          result[label] = cells[1]?.textContent?.replace(/\s+/g, " ").trim() || null;
-        }
-      });
-      return result;
+    function cleanValue(text) {
+      if (!text) return null;
+      
+      // Normalize all whitespace to single spaces
+      text = text.replace(/\s+/g, " ").trim();
+      
+      // Add space before "Soles" if missing
+      text = text.replace(/(\d)Soles/g, "$1 Soles");
+      
+      // Add space before "KB" if missing  
+      text = text.replace(/(\d)KB/g, "$1 KB");
+      
+      return text;
     }
 
     /**
-     * Parses a columnar table (like Cronograma, Entidad Contratante):
+     * Parses a key-value table: each row has (label cell, value cell).
+     * Handles nested tables in value cells (e.g. "Lugar y cuenta de pago").
+     * 
+     * IMPROVED: Skips the first row if it contains concatenated text (the giant key issue).
+     */
+    function parseKeyValueTable(table) {
+    const result = {};
+    
+    const outerRows = table.querySelectorAll(':scope > tbody > tr, :scope > tr');
+    
+    outerRows.forEach(outerRow => {
+      const outerCell = outerRow.querySelector(':scope > td');
+      if (!outerCell) return;
+      
+      const innerTable = outerCell.querySelector(':scope > table, :scope > * > table');
+      if (!innerTable) return;
+      
+      innerTable.querySelectorAll(':scope > tbody > tr, :scope > tr').forEach(row => {
+        const cells = row.querySelectorAll(':scope > td');
+        if (cells.length < 2) return;
+        
+        const label = cells[0]?.textContent?.trim().replace(/:$/, '');
+        if (!label || label.split(':').length > 2) return;
+        
+        const nestedTable = cells[1]?.querySelector('table');
+        if (nestedTable) {
+          const headerRow = nestedTable.querySelector('tr');
+          const dataRow = nestedTable.querySelectorAll('tr')[1];
+          if (headerRow && dataRow) {
+            const headers = [...headerRow.querySelectorAll('td,th')].map(c => c.textContent.trim());
+            const values = [...dataRow.querySelectorAll('td')].map(c => c.textContent.trim());
+            const nested = {};
+            headers.forEach((h, i) => { if (h) nested[h] = cleanValue(values[i]) || null; });
+            result[label] = nested;
+          }
+        } else {
+          result[label] = cleanValue(cells[1]?.textContent) || null;
+        }
+      });
+    });
+    
+    return result;
+  }
+
+    /**
+     * Parses a columnar table (like Cronograma, Documentos):
      * uses the first row as headers, remaining rows as data.
+     * 
+     * IMPROVED: Better header detection and handling of empty tables.
      */
     function parseColumnarTable(table) {
-      const rows    = table.querySelectorAll("tbody tr, tr");
+      const rows = table.querySelectorAll("tbody tr, tr");
       const headers = [];
       const results = [];
 
       rows.forEach((row, i) => {
         const cells = row.querySelectorAll("td, th");
+        
+        // First row: extract headers
         if (i === 0) {
-          cells.forEach(c => headers.push(c.textContent.trim()));
+          cells.forEach(c => {
+            const headerText = c.textContent.trim();
+            if (headerText) headers.push(headerText);
+          });
           return;
         }
+        
+        // Check if this is an empty message row
+        if (row.classList.contains('ui-datatable-empty-message')) {
+          return;
+        }
+        
+        // Skip rows that say "No se encontraron Datos"
+        if (cells.length === 1 && cells[0].textContent.includes('No se encontraron')) {
+          return;
+        }
+
         const entry = {};
+        let hasData = false;
+        
         cells.forEach((c, j) => {
           const key = headers[j] || `col_${j}`;
-          // For Cronograma: split "Etapa\nA través del SEACE" into etapa + tipo
-          if (j === 0 && headers[j]?.toLowerCase().includes("etapa")) {
-            const lines = c.textContent.trim().split("\n").map(l => l.trim()).filter(Boolean);
-            entry["Etapa"] = lines[0] || null;
-            entry["Tipo"]  = lines[1] || null;
+          const rawText = c.textContent || "";
+          
+          // Special handling for Cronograma's first column (Etapa + Tipo on separate lines)
+          if (j === 0 && key.toLowerCase().includes("etapa")) {
+            const lines = rawText.trim().split("\n").map(l => l.trim()).filter(Boolean);
+            if (lines.length > 0) {
+              entry["Etapa"] = cleanValue(lines[0]);
+              entry["Tipo"] = lines.length > 1 ? cleanValue(lines[1]) : null;
+              hasData = true;
+            }
           } else {
-            entry[key] = c.textContent.replace(/\s+/g, " ").trim() || null;
+            const cleanedValue = cleanValue(rawText);
+            entry[key] = cleanedValue;
+            if (cleanedValue) hasData = true;
           }
         });
-        results.push(entry);
+        
+        // Only add row if it has at least some data
+        if (hasData) {
+          results.push(entry);
+        }
       });
 
       return results;
@@ -189,6 +225,8 @@ async function parseFicha(page) {
     /**
      * Parses the "Lista de Documentos" table specifically.
      * Extracts download metadata from onclick attributes.
+     * 
+     * UNCHANGED: This already works perfectly.
      */
     function parseDocumentosTable(tbody) {
       const documentos = [];
@@ -224,63 +262,48 @@ async function parseFicha(page) {
           }
         }
 
-        documentos.push({
-          Nro: nro || null,
-          Etapa: etapa || null,
-          Documento: documento || null,
-          Archivo: archivoData,
-          "Fecha de publicación": fechaPublicacion || null
-        });
+        if (nro && etapa && documento) {
+          documentos.push({
+            "Nro": nro,
+            "Etapa": etapa,
+            "Documento": documento,
+            "Archivo": archivoData,
+            "Fecha de publicación": fechaPublicacion
+          });
+        }
       });
 
       return documentos;
     }
 
     /**
-     * Decides if a table is key-value or columnar.
-     * Key-value: first cell of each row is a label (th-like), second is value.
-     * Columnar: has a clear header row with multiple columns.
+     * Detects whether a table is key-value or columnar.
      */
     function detectTableType(table) {
-      const firstRow    = table.querySelector("tbody tr, tr");
-      if (!firstRow) return "empty";
+      const firstRow = table.querySelector("tbody tr, tr");
+      if (!firstRow) return "key-value";
 
-      const cells       = firstRow.querySelectorAll("td, th");
-      const headerRow   = table.querySelector("thead tr") || table.querySelector("tr");
-      const hasHeaders  = [...(headerRow?.querySelectorAll("th") || [])].length > 0;
-      const hasTwoColsOnly = cells.length === 2;
-
-      // If there's a <thead> with multiple headers, it's columnar
-      if (hasHeaders && !hasTwoColsOnly) return "columnar";
-
-      // If first row has class or style suggesting it's a header row
-      const allRows = table.querySelectorAll("tbody tr");
-      if (allRows.length > 0) {
-        // Count rows with exactly 2 cells (key-value pattern)
-        const twoColRows = [...allRows].filter(r => r.querySelectorAll("td").length === 2).length;
-        if (twoColRows / allRows.length > 0.6) return "key-value";
+      const cells = firstRow.querySelectorAll("td, th");
+      
+      // If first row has exactly 2 cells and first cell ends with colon, it's key-value
+      if (cells.length === 2 && cells[0]?.textContent?.trim().endsWith(":")) {
+        return "key-value";
+      }
+      
+      // If first row has many cells with short text, likely headers (columnar)
+      if (cells.length > 2) {
+        return "columnar";
       }
 
-      // Default: if first row has > 2 cells, assume columnar
-      return cells.length > 2 ? "columnar" : "key-value";
+      return "key-value";
     }
 
-    // ── Find and parse all sections ──────────────────────────────────────────
+    // ── Main extraction logic ──────────────────────────
 
-    const ficha  = document.querySelector("#tbFicha\\:idFormFichaSeleccion");
-    if (!ficha) return { error: "Ficha form not found in DOM" };
+    const ficha = document.querySelector("#tbFicha\\:idFormFichaSeleccion");
+    if (!ficha) return {};
 
     const sections = {};
-
-    // Find all visible section headings (fieldset legends or div headings)
-    const headingSelectors = [
-      "fieldset legend",
-      ".ui-fieldset-legend",
-      ".ui-panel-title",
-      "h3", "h4",
-      // SEACE uses plain text in certain span/div patterns
-      ".card-header",
-    ];
 
     // Strategy: find all <fieldset> containers first (most reliable)
     const fieldsets = ficha.querySelectorAll("fieldset");
@@ -288,6 +311,18 @@ async function parseFicha(page) {
       const legend = fieldset.querySelector("legend, .ui-fieldset-legend");
       const title  = legend?.textContent?.trim();
       if (!title) return;
+
+      // Skip - handled separately or broken
+      if (title === 'Ver documentos por Etapa') return;
+      if (title === 'Criterios de Búsqueda') return;
+      if (title === 'Resultado de Búsqueda') return;
+      if (title === 'Opciones del procedimiento') return;
+      if (title === 'Cronograma') return; // handled by safety net
+      if (title === 'Entidad Contratante') return;
+      if (title === 'Detalle de Calendarización') return;
+      if (title === 'Ver listado de ítem') return;
+      if (title === 'Datos del Procedimiento') return;
+      if (title === 'Acuerdos Comerciales') return;
 
       const table = fieldset.querySelector("table");
       if (!table) return;
@@ -327,35 +362,175 @@ async function parseFicha(page) {
       });
     }
 
-    // Always try to grab Cronograma by its known tbody ID as a safety net
-    if (!sections.cronograma) {
-      const cronTbody = document.querySelector("#tbFicha\\:dtCronograma_data");
-      if (cronTbody) {
-        // Reconstruct as if it were a table
-        const rows = cronTbody.querySelectorAll("tr");
-        const cronograma = [];
-        rows.forEach(row => {
-          const cells = row.querySelectorAll("td");
-          if (cells.length < 3) return;
-          const etapaText  = cells[0]?.textContent?.trim() || "";
-          const etapaLines = etapaText.split("\n").map(l => l.trim()).filter(Boolean);
+    // ── SPECIFIC EXTRACTIONS (safety nets for known sections) ──────────────
+
+    /**
+     * CRONOGRAMA: Extract by known tbody ID as safety net
+     * IMPROVED: Better handling of empty cronograma
+     */
+    // Always use safety net for cronograma (more reliable)
+    sections.cronograma = [];
+    const cronTbody = document.querySelector("#tbFicha\\:dtCronograma_data");
+
+    if (cronTbody) {
+      const rows = cronTbody.querySelectorAll("tr:not(.ui-datatable-empty-message)");
+      const cronograma = [];
+      
+      rows.forEach(row => {
+        const cells = row.querySelectorAll("td");
+        if (cells.length < 3) return;
+        
+        const etapaCell = cells[0];
+
+        // Get text before <br> only
+        const firstTextNode = Array.from(etapaCell.childNodes)
+          .find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+        const etapa = firstTextNode 
+          ? cleanValue(firstTextNode.textContent) 
+          : cleanValue(etapaCell.textContent);
+
+        // Get span text after <br> as lugar
+        const lugar = etapaCell.querySelector('span')?.textContent?.trim() || null;
+        
+        const fechaInicio = cleanValue(cells[1]?.textContent);
+        const fechaFin = cleanValue(cells[2]?.textContent);
+        
+        // Only add if we have actual data
+        if (etapa && (fechaInicio || fechaFin)) {
           cronograma.push({
-            Etapa:        etapaLines[0] || "",
-            Tipo:         etapaLines[1] || null,
-            "Fecha Inicio": cells[1]?.textContent?.trim() || null,
-            "Fecha Fin":    cells[2]?.textContent?.trim() || null
+            "Etapa": etapa,
+            "Lugar": lugar,
+            "Fecha Inicio": fechaInicio,
+            "Fecha Fin": fechaFin
           });
-        });
-        if (cronograma.length > 0) sections.cronograma = cronograma;
+        }
+      });
+      
+      if (cronograma.length > 0) {
+        sections.cronograma = cronograma;
       }
     }
+
+    // ENTIDAD CONTRATANTE
+    const entidadTbody = document.querySelector("#tbFicha\\:dtEntidadContrata_data");
+    if (entidadTbody) {
+      const rows = entidadTbody.querySelectorAll("tr:not(.ui-datatable-empty-message)");
+      const entidades = [];
+      rows.forEach(row => {
+        const cells = row.querySelectorAll("td");
+        if (cells.length < 2) return;
+        entidades.push({
+          "N° Ruc": cleanValue(cells[0]?.textContent),
+          "Entidad Contratante": cleanValue(cells[1]?.textContent)
+        });
+      });
+      if (entidades.length > 0) sections.entidad_contratante = entidades;
+    }
+
+    // ACUERDOS COMERCIALES
+    const acuerdosTbody = document.querySelector("#tbFicha\\:dtAcuerdosComerciales_data");
+    if (acuerdosTbody) {
+      const rows = acuerdosTbody.querySelectorAll("tr:not(.ui-datatable-empty-message)");
+      const acuerdos = [];
+      rows.forEach(row => {
+        const cells = row.querySelectorAll("td");
+        if (cells.length < 2) return;
+        acuerdos.push({
+          "Nro": cleanValue(cells[0]?.textContent),
+          "Descripción del Acuerdo Comercial": cleanValue(cells[1]?.textContent)
+        });
+      });
+      if (acuerdos.length > 0) sections.acuerdos_comerciales = acuerdos;
+    }
+
     
-    // Always try to grab Documentos by its known tbody ID as a safety net
+    /**
+     * DOCUMENTOS: Extract by known tbody ID as safety net
+     * UNCHANGED: Already works perfectly
+     */
     if (!sections.lista_de_documentos && !sections.documentos) {
       const docTbody = document.querySelector("#tbFicha\\:dtDocumentos_data");
       if (docTbody) {
         const documentos = parseDocumentosTable(docTbody);
         if (documentos.length > 0) sections.documentos = documentos;
+      }
+    }
+
+    /**
+     * VER DOCUMENTOS POR ETAPA: Clean extraction
+     * NEW: Specific handler to avoid col_0, col_1 mess
+     */
+    if (!sections.ver_documentos_por_etapa) {
+      // Try to find the accordion/tab section for "Ver documentos por etapa"
+      const docPorEtapaTbody = document.querySelector("#tbFicha\\:dtDocumentosPorEtapa_data");
+      if (docPorEtapaTbody) {
+        const cleanDocs = [];
+        const rows = docPorEtapaTbody.querySelectorAll("tr:not(.ui-datatable-empty-message)");
+        
+        rows.forEach(row => {
+          const cells = row.querySelectorAll("td");
+          if (cells.length < 5) return;
+          
+          const nro = cleanValue(cells[0]?.textContent);
+          const etapa = cleanValue(cells[1]?.textContent);
+          const documento = cleanValue(cells[2]?.textContent);
+          const archivo = cleanValue(cells[3]?.textContent);
+          const fecha = cleanValue(cells[4]?.textContent);
+          
+          if (nro && etapa) {
+            cleanDocs.push({
+              "Nro": nro,
+              "Etapa": etapa,
+              "Documento": documento,
+              "Archivo": archivo,
+              "Fecha y Hora de publicación": fecha,
+              "Acciones": null
+            });
+          }
+        });
+        
+        if (cleanDocs.length > 0) {
+          sections.ver_documentos_por_etapa = cleanDocs;
+        }
+      }
+    }
+
+    /**
+     * VER LISTADO DE ITEM: Clean extraction
+     * NEW: Specific handler for items list
+     */
+    if (!sections.ver_listado_de_item) {
+      const itemsTbody = document.querySelector("#tbFicha\\:dtItemsConvocatoria_data");
+      if (itemsTbody) {
+        const items = [];
+        const rows = itemsTbody.querySelectorAll("tr:not(.ui-datatable-empty-message)");
+        
+        rows.forEach(row => {
+          const cells = row.querySelectorAll("td");
+          if (cells.length < 6) return;
+          
+          const postor = cleanValue(cells[0]?.textContent);
+          const mype = cleanValue(cells[1]?.textContent);
+          const leySelva = cleanValue(cells[2]?.textContent);
+          const bonificacion = cleanValue(cells[3]?.textContent);
+          const cantidadAdj = cleanValue(cells[4]?.textContent);
+          const montoAdj = cleanValue(cells[5]?.textContent);
+          
+          if (postor) {
+            items.push({
+              "Postor": postor,
+              "MYPE": mype,
+              "Ley de promoción de la Selva": leySelva,
+              "Bonificación colindante (Contratación fuera de provincia de Lima y Callao)": bonificacion,
+              "Cantidad adjudicada": cantidadAdj,
+              "Monto adjudicado": montoAdj
+            });
+          }
+        });
+        
+        if (items.length > 0) {
+          sections.ver_listado_de_item = items;
+        }
       }
     }
 
@@ -367,7 +542,7 @@ async function parseFicha(page) {
  * Clicks the "Regresar" button to go back to the results table.
  * Uses text search instead of hardcoded j_idt ID (more robust).
  */
-async function closeFicha(page, run_id) {
+async function closeFicha(page) {
   await page.evaluate(() => {
     // Find "Regresar" button by text (more stable than j_idt22 which can change)
     const buttons = document.querySelectorAll("button, a.ui-button, .ui-button");
@@ -401,7 +576,7 @@ async function closeFicha(page, run_id) {
     );
     
     if (activeTabIndex !== 1) {
-      console.log(`[TAB FIX] Wrong tab active (${activeTabIndex}), switching to tab 1`);
+      console.log(`Wrong tab active (${activeTabIndex}), switching to tab 1`);
       
       // Deactivate all
       tabLinks.forEach((tab) => {
@@ -427,11 +602,13 @@ async function closeFicha(page, run_id) {
       if (hiddenInput) hiddenInput.value = '1';
     }
   });
-  
-  // Let tab settle
-  await page.waitForTimeout(300);
-  
-  console.log(`[${run_id}] ✓ Back to results`);
+
+  // Wait for DataTable widget to be ready after navigation back
+  await page.waitForFunction(() => 
+    window.widget_tbBuscador_idFormBuscarProceso_dtProcesos !== undefined,
+    { timeout: 15000 }
+  );
+  log(`Back to results`);
 }
 
 /**
