@@ -24,7 +24,7 @@ seaceRouter.post("/export", async (req, res) => {
   log(`Filters: ${JSON.stringify(req.body)}`);
 
   try {
-    const { departamento, objeto, anio } = req.body;
+    const { departamento, objeto, anio, fecha_desde } = req.body;
 
     // 1. Launch browser
     browser = await launchBrowser();
@@ -40,7 +40,7 @@ seaceRouter.post("/export", async (req, res) => {
     await runSearch(page);
 
     // 5. Scrape all pages (results + ficha for each item)
-    const allItems = await scrapeAllPages(page);
+    const allItems = await scrapeAllPages(page, fecha_desde);
 
     await closeBrowser(browser);
 

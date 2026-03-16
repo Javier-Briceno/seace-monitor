@@ -4,16 +4,23 @@ import { log } from './logger.js';
 const RESULTS_TBODY = 'tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]';
 
 /** Scrape all paginated results and return a flat array of items. */
-export async function scrapeAllPages(page) {
+export async function scrapeAllPages(page, fecha_desde=null) {
   const allItems = [];
   let currentPage = 1;
   let hasMorePages = true;
+  let stopScraping = false;
 
-  while (hasMorePages) {
+  while (hasMorePages && !stopScraping) {
     log(`Scraping page ${currentPage}...`);
 
-    const pageItems = await scrapePage(page, currentPage);
-    allItems.push(...pageItems);
+    const { items, stop } = await scrapePage(page, currentPage, fecha_desde);
+    allItems.push(...items);
+
+    if (stop) {
+      log(`fecha_desde reached on page ${currentPage}. Stopping.`);
+      stopScraping = true;
+      break;
+    }
 
     const isLastPage = await checkIfLastPage(page);
 
@@ -32,9 +39,17 @@ export async function scrapeAllPages(page) {
 
 // Private helpers
 
+function parseDate(dateStr) {
+  // Format: "13/03/2026 18:28" or "13/03/2026"
+  const [datePart] = dateStr.split(' ');
+  const [day, month, year] = datePart.split('/');
+  return new Date(`${year}-${month}-${day}`);
+}
+
 /** Scrape every row in the current page, including ficha details. */
-async function scrapePage(page, pageNumber) {
+async function scrapePage(page, pageNumber, fecha_desde = null) {
   const items = [];
+  let stop = false;
 
   const rowCount = await page.evaluate((selector) => {
     const tbody = document.querySelector(selector);
@@ -54,12 +69,23 @@ async function scrapePage(page, pageNumber) {
       continue;
     }
 
+    // Check fecha_desde
+    if (fecha_desde && basicData.fecha_publicacion) {
+      const itemDate = parseDate(basicData.fecha_publicacion);
+      const fromDate = new Date(fecha_desde);
+      if (itemDate < fromDate) {
+        log(`Item date ${basicData.fecha_publicacion} is before fecha_desde ${fecha_desde}. Stopping.`);
+        stop = true;
+        break;
+      }
+    }
+
     const fichaData = await extractFicha(page, i);
 
     items.push({ ...basicData, ficha: fichaData });
   }
 
-  return items;
+  return { items, stop };
 }
 
 /** Extract base columns from one result row without page navigation. */
