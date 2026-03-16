@@ -13,8 +13,14 @@ const FICHA_FORM    = "#tbFicha\\:idFormFichaSeleccion";
 export async function extractFicha(page, rowIndex) {
   try {
     await openFicha(page, rowIndex);
+
     await screenshotFicha(page, rowIndex);
+
     const fichaData = await parseFicha(page);
+
+    if (fichaData.documentos?.length > 0) {
+      fichaData.documentos = await resolveDownloadUrls(page, fichaData.documentos);
+    }
     await closeFicha(page);
 
     log(`Ficha extracted for item ${rowIndex + 1}`);
@@ -536,6 +542,43 @@ async function parseFicha(page) {
 
     return sections;
   });
+}
+
+async function resolveDownloadUrls(page, documentos) {
+  if (!fs.existsSync('downloads')) fs.mkdirSync('downloads', { recursive: true });
+
+  const resolved = [];
+  for (const doc of documentos) {
+    if (!doc.Archivo?.uuid) {
+      resolved.push(doc);
+      continue;
+    }
+    try {
+      const safeFilename = `${doc.Archivo.uuid}_${doc.Archivo.filename.replace(/[^a-z0-9._-]/gi, '_')}`;
+      const filepath = `downloads/${safeFilename}`;
+
+      const downloadPromise = page.waitForEvent('download', { timeout: 60000 });
+      await page.evaluate((uuid) => {
+        jsCmsSeaceUtil.descargaPriv(uuid);
+      }, doc.Archivo.uuid);
+      const download = await downloadPromise;
+      await download.saveAs(filepath);
+
+      log(`[ficha] Downloaded: ${safeFilename} (${fs.statSync(filepath).size} bytes)`);
+
+      resolved.push({
+        ...doc,
+        Archivo: {
+          ...doc.Archivo,
+          local_path: filepath
+        }
+      });
+    } catch (e) {
+      log(`[ficha] Download error for ${doc.Archivo?.filename}: ${e.message}`);
+      resolved.push(doc);
+    }
+  }
+  return resolved;
 }
 
 /**

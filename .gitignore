@@ -30,3 +30,6 @@ logs/
 
 # Playwright browsers
 /ms-playwright/
+
+# Folder created when runned locally
+downloads/
