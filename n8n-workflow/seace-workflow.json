@@ -1,0 +1,2244 @@
+{
+  "name": "SEACE-Monitor",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        1136
+      ],
+      "id": "ebbeeaec-a790-40cf-b5c2-00781b66a817",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 6 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -304,
+        912
+      ],
+      "id": "f995ce96-e7bc-4870-a5aa-f78ca924011f",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/seace/export",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"departamento\": \"LA LIBERTAD\",\n  \"objeto\": \"Obra\",\n  \"anio\": \"2026\",\n  \"fecha_desde\": \"{{ $now.minus(1, 'day').toFormat('yyyy-MM-dd') }}\"\n}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -80,
+        912
+      ],
+      "id": "f840612b-7446-49af-ad5b-4a897dda75f5",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "FiAfSOTobDKZxBil",
+          "name": "Seace Monitor Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS licitaciones (\n  id SERIAL PRIMARY KEY,\n  numero TEXT,\n  nomenclatura TEXT UNIQUE,\n  entidad TEXT,\n  fecha_publicacion TIMESTAMP,\n  reiniciado_desde TEXT,\n  objeto_de_contratacion TEXT,\n  descripcion TEXT,\n  codigo_snip TEXT,\n  codigo_cui TEXT,\n  monto TEXT,\n  moneda TEXT,\n  version_seace TEXT,\n  departamento TEXT,\n  scraped_at TIMESTAMP DEFAULT NOW()\n);\n\nCREATE TABLE IF NOT EXISTS cronograma (\n  id SERIAL PRIMARY KEY,\n  licitacion_id INTEGER REFERENCES licitaciones(id) ON DELETE CASCADE,\n  etapa TEXT,\n  lugar TEXT,\n  fecha_inicio TEXT,\n  fecha_fin TEXT\n);\n\nCREATE TABLE IF NOT EXISTS documentos (\n  id SERIAL PRIMARY KEY,\n  licitacion_id INTEGER REFERENCES licitaciones(id) ON DELETE CASCADE,\n  nro TEXT,\n  etapa TEXT,\n  documento TEXT,\n  uuid TEXT UNIQUE,\n  filename TEXT,\n  tamanio TEXT,\n  local_path TEXT,\n  fecha_publicacion TEXT\n);\n\nCREATE TABLE IF NOT EXISTS convocatoria (\n  id SERIAL PRIMARY KEY,\n  licitacion_id INTEGER REFERENCES licitaciones(id) ON DELETE CASCADE,\n  nomenclatura TEXT,\n  n_convocatoria TEXT,\n  tipo_compra TEXT,\n  normativa TEXT,\n  version_seace TEXT,\n  entidad_convocante TEXT,\n  direccion_legal TEXT,\n  pagina_web TEXT,\n  telefono TEXT,\n  objeto_contratacion TEXT,\n  descripcion_objeto TEXT,\n  monto TEXT,\n  fecha_publicacion TEXT\n);\n\nCREATE TABLE IF NOT EXISTS entidad_contratante (\n  id SERIAL PRIMARY KEY,\n  licitacion_id INTEGER REFERENCES licitaciones(id) ON DELETE CASCADE,\n  ruc TEXT,\n  entidad TEXT\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -656,
+        912
+      ],
+      "id": "44bfb513-a65d-4f2b-a039-9652306d8fbe",
+      "name": "CREATE TABLES",
+      "credentials": {
+        "postgres": {
+          "id": "FXEG0dQzOuAcjlhc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "licitaciones",
+          "mode": "list",
+          "cachedResultName": "licitaciones"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "numero": "={{ $json.items.numero }}",
+            "entidad": "={{ $json.items.entidad }}",
+            "nomenclatura": "={{ $json.items.nomenclatura }}",
+            "fecha_publicacion": "={{ $json.items.fecha_publicacion ? new Date($json.items.fecha_publicacion.split(' ')[0].split('/').reverse().join('-') + 'T' + ($json.items.fecha_publicacion.split(' ')[1] || '00:00') + ':00').toISOString() : null }}",
+            "reiniciado_desde": "={{ $json.items.reiniciado_desde }}",
+            "objeto_de_contratacion": "={{ $json.items.objeto_de_contratacion }}",
+            "descripcion": "={{ $json.items.descripcion }}",
+            "codigo_cui": "={{ $json.items.codigo_cui }}",
+            "monto": "={{ $json.items.monto }}",
+            "moneda": "={{ $json.items.moneda }}",
+            "version_seace": "={{ $json.items.version_seace }}",
+            "codigo_snip": "={{ $json.items.codigo_snip }}",
+            "departamento": "={{ $json.meta.filtros_aplicados.departamento }}",
+            "scraped_at": "={{ $json.meta.scraped_at }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "numero",
+              "displayName": "numero",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nomenclatura",
+              "displayName": "nomenclatura",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "entidad",
+              "displayName": "entidad",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_publicacion",
+              "displayName": "fecha_publicacion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reiniciado_desde",
+              "displayName": "reiniciado_desde",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "objeto_de_contratacion",
+              "displayName": "objeto_de_contratacion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "descripcion",
+              "displayName": "descripcion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "codigo_snip",
+              "displayName": "codigo_snip",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "codigo_cui",
+              "displayName": "codigo_cui",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monto",
+              "displayName": "monto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "moneda",
+              "displayName": "moneda",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "version_seace",
+              "displayName": "version_seace",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "departamento",
+              "displayName": "departamento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scraped_at",
+              "displayName": "scraped_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        368,
+        912
+      ],
+      "id": "7acef6ff-caa1-4185-bbe7-2a784be7e78c",
+      "name": "Licitaciones",
+      "credentials": {
+        "postgres": {
+          "id": "FXEG0dQzOuAcjlhc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "meta",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        144,
+        912
+      ],
+      "id": "cb9b574a-e694-4805-a7b5-29872937af65",
+      "name": "Split Out Items"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items.ficha.cronograma",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        624
+      ],
+      "id": "9d1a67fa-bf49-4988-8f2f-2719737d1577",
+      "name": "Split Out Cronograma"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "cronograma",
+          "mode": "list",
+          "cachedResultName": "cronograma"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "licitacion_id": "={{ $json.id }}",
+            "etapa": "={{ $json['items.ficha.cronograma'].Etapa }}",
+            "lugar": "={{ $json['items.ficha.cronograma'].Lugar }}",
+            "fecha_inicio": "={{ $json['items.ficha.cronograma']['Fecha Inicio'] }}",
+            "fecha_fin": "={{ $json['items.ficha.cronograma']['Fecha Fin'] }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "licitacion_id",
+              "displayName": "licitacion_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "etapa",
+              "displayName": "etapa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lugar",
+              "displayName": "lugar",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_inicio",
+              "displayName": "fecha_inicio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_fin",
+              "displayName": "fecha_fin",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1264,
+        624
+      ],
+      "id": "abbfa544-041a-4d22-b979-c8e855898648",
+      "name": "Cronogramas",
+      "credentials": {
+        "postgres": {
+          "id": "FXEG0dQzOuAcjlhc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "68930f7e-de43-4707-8888-c0b573e6b2b7",
+              "name": "items",
+              "value": "={{ $('Split Out Items').item.json.items }}",
+              "type": "object"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "include": "selected",
+        "includeFields": "id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        816,
+        912
+      ],
+      "id": "72aabd9e-7d16-439c-86a6-562c0a974fdf",
+      "name": "Map Id to Items"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items.ficha.documentos",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        816
+      ],
+      "id": "8a9ec26f-14e7-4576-940d-18c8d4d0305e",
+      "name": "Split Out Documentos"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "documentos",
+          "mode": "list",
+          "cachedResultName": "documentos"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "licitacion_id": "={{ $json.id }}",
+            "nro": "={{ $json['items.ficha.documentos'].Nro }}",
+            "etapa": "={{ $json['items.ficha.documentos'].Etapa }}",
+            "documento": "={{ $json['items.ficha.documentos'].Documento }}",
+            "uuid": "={{ $json['items.ficha.documentos'].Archivo.uuid }}",
+            "filename": "={{ $json['items.ficha.documentos'].Archivo.filename }}",
+            "tamanio": "={{ $json['items.ficha.documentos'].Archivo.tamanio }}",
+            "local_path": "={{ $json['items.ficha.documentos'].Archivo.local_path }}",
+            "fecha_publicacion": "={{ $json['items.ficha.documentos']['Fecha de publicación'] }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "licitacion_id",
+              "displayName": "licitacion_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nro",
+              "displayName": "nro",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "etapa",
+              "displayName": "etapa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "documento",
+              "displayName": "documento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "uuid",
+              "displayName": "uuid",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "filename",
+              "displayName": "filename",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tamanio",
+              "displayName": "tamanio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "local_path",
+              "displayName": "local_path",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_publicacion",
+              "displayName": "fecha_publicacion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1264,
+        816
+      ],
+      "id": "c9b31f08-1e32-402a-9c27-ee3522cd6b40",
+      "name": "Documentos",
+      "credentials": {
+        "postgres": {
+          "id": "FXEG0dQzOuAcjlhc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fa979d58-3e1e-424f-a05e-c65ddf086e73",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        592,
+        912
+      ],
+      "id": "72531105-bf2c-43b1-acd9-bbb835695450",
+      "name": "New Item?"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "convocatoria",
+          "mode": "list",
+          "cachedResultName": "convocatoria"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "licitacion_id": "={{ $json.id }}",
+            "nomenclatura": "={{ $json.items.ficha.convocatoria.Nomenclatura }}",
+            "n_convocatoria": "={{ $json.items.ficha.convocatoria['N° Convocatoria'] }}",
+            "tipo_compra": "={{ $json.items.ficha.convocatoria['Tipo Compra o Selección'] }}",
+            "normativa": "={{ $json.items.ficha.convocatoria['Normativa Aplicable'] }}",
+            "version_seace": "={{ $json.items.ficha.convocatoria['Versión SEACE'] }}",
+            "entidad_convocante": "={{ $json.items.ficha.convocatoria['Entidad Convocante'] }}",
+            "direccion_legal": "={{ $json.items.ficha.convocatoria['Direccion Legal'] }}",
+            "pagina_web": "={{ $json.items.ficha.convocatoria['Pagina Web'] }}",
+            "telefono": "={{ $json.items.ficha.convocatoria['Télefono de la Entidad'] }}",
+            "objeto_contratacion": "={{ $json.items.ficha.convocatoria['Objeto de Contratación'] }}",
+            "descripcion_objeto": "={{ $json.items.ficha.convocatoria['Descripción del Objeto'] }}",
+            "monto": "={{ $json.items.ficha.convocatoria['VR / VE / Cuantía de la contratación'] }}",
+            "fecha_publicacion": "={{ $json.items.ficha.convocatoria['Fecha y Hora Publicación'] }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "licitacion_id",
+              "displayName": "licitacion_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nomenclatura",
+              "displayName": "nomenclatura",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "n_convocatoria",
+              "displayName": "n_convocatoria",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tipo_compra",
+              "displayName": "tipo_compra",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "normativa",
+              "displayName": "normativa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "version_seace",
+              "displayName": "version_seace",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "entidad_convocante",
+              "displayName": "entidad_convocante",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "direccion_legal",
+              "displayName": "direccion_legal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pagina_web",
+              "displayName": "pagina_web",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "telefono",
+              "displayName": "telefono",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "objeto_contratacion",
+              "displayName": "objeto_contratacion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "descripcion_objeto",
+              "displayName": "descripcion_objeto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "monto",
+              "displayName": "monto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_publicacion",
+              "displayName": "fecha_publicacion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1040,
+        1008
+      ],
+      "id": "1e778a88-d84a-4644-8b0b-1c01cb544c86",
+      "name": "Convocatoria",
+      "credentials": {
+        "postgres": {
+          "id": "FXEG0dQzOuAcjlhc",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items.ficha.entidad_contratante",
+        "include": "selectedOtherFields",
+        "fieldsToInclude": "id",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        1200
+      ],
+      "id": "40530820-9af8-4c46-a0ef-4493c6e9a484",
+      "name": "Split Out Entidad Contratante"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/seace/export",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer cualquier_string_secreto_que_quieras"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"departamento\": \"LA LIBERTAD\",\n  \"objeto\": \"Obra\",\n  \"anio\": \"2026\",\n  \"fecha_desde\": \"{{ $now.minus(4, 'day').toFormat('yyyy-MM-dd') }}\"\n}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -656,
+        688
+      ],
+      "id": "04d89cef-140a-47a7-bd97-a649b98aa57b",
+      "name": "Data for Testing"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "entidad_contratante",
+          "mode": "list",
+          "cachedResultName": "entidad_contratante"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "licitacion_id": "={{ $json.id }}",
+            "ruc": "={{ $json['items.ficha.entidad_contratante']['N° Ruc'] }}",
+            "entidad": "={{ $json['items.ficha.entidad_contratante']['Entidad Contratante'] }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "licitacion_id",
+              "displayName": "licitacion_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ruc",
+              "displayName": "ruc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "entidad",
+              "displayName": "entidad",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1264,
+        1200
+      ],
+      "id": "8f647737-9c34-43ef-af25-60cb31884f44",
+      "name": "Entidad Contratante",
+      "credentials": {
+        "postgres": {
+          "id": "FXEG0dQzOuAcjlhc",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {
+    "Data for Testing": [
+      {
+        "json": {
+          "total": 11,
+          "meta": {
+            "fuente": "SEACE",
+            "scraped_at": "2026-03-16T22:33:31.863Z",
+            "filtros_aplicados": {
+              "departamento": "LA LIBERTAD",
+              "objeto": "Obra",
+              "anio": "2026"
+            }
+          },
+          "items": [
+            {
+              "numero": "1",
+              "entidad": "MUNICIPALIDAD PROVINCIAL DE PATAZ - TAYABAMBA",
+              "fecha_publicacion": "13/03/2026 21:56",
+              "nomenclatura": "LP-ABR-4-2026-MPP/C-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "¿CREACIÓN DE LOS ESPACIOS PÚBLICOS URBANOS EN ESPACIO URBANO DE CENTRO POBLADO PIAN, DISTRITO DE TAYABAMBA, DE LA PROVINCIA DE PATAZ DEL DEPARTAMENTO DE LA LIBERTAD¿ CON CUI N°2708678",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "---",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-4-2026-MPP/C-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD PROVINCIAL DE PATAZ - TAYABAMBA",
+                  "Direccion Legal": "JR. JOSE GALVEZ No 320 TAYABAMBA (LA LIBERTAD-PATAZ-TAYABAMBA)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": null,
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "¿CREACIÓN DE LOS ESPACIOS PÚBLICOS URBANOS E...",
+                  "VR / VE / Cuantía de la contratación": "---",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Fecha y Hora Publicación": "13/03/2026 21:56"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026",
+                    "Fecha Fin": "13/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "26/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "18/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "24/03/2026",
+                    "Fecha Fin": "24/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "MEDIANTE EL SEACE 3.0",
+                    "Fecha Inicio": "24/03/2026",
+                    "Fecha Fin": "24/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "27/03/2026 00:01",
+                    "Fecha Fin": "27/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "MEDIANTE EL SEACE 3.0",
+                    "Fecha Inicio": "30/03/2026",
+                    "Fecha Fin": "30/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "MEDIANTE EL SEACE 3.0",
+                    "Fecha Inicio": "30/03/2026 08:30",
+                    "Fecha Fin": "30/03/2026"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "8e1a6a56-3a6d-47db-a064-868c53723b78",
+                      "tipo": "3",
+                      "filename": "ACTA DE  INSTALACION Y APROBACION DE BASES.pdf",
+                      "tamanio": "(2238 KB)",
+                      "local_path": "downloads/8e1a6a56-3a6d-47db-a064-868c53723b78_ACTA_DE__INSTALACION_Y_APROBACION_DE_BASES.pdf"
+                    },
+                    "Fecha de publicación": "13/03/2026 21:56"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "2",
+              "entidad": "MUNICIPALIDAD PROVINCIAL DE PATAZ - TAYABAMBA",
+              "fecha_publicacion": "13/03/2026 21:56",
+              "nomenclatura": "LP-ABR-3-2026-MPP/C-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "\"MEJORAMIENTO DEL SERVICIO DE EDUCACION PRIMARIA EN I.E. 80964 DISTRITO DE TAYABAMBA DE LA PROVINCIA DE PATAZ DEL DEPARTAMENTO DE LA LIBERTAD¿ CON CUI N°2708084",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "1,369,081.82",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-3-2026-MPP/C-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD PROVINCIAL DE PATAZ - TAYABAMBA",
+                  "Direccion Legal": "JR. JOSE GALVEZ No 320 TAYABAMBA (LA LIBERTAD-PATAZ-TAYABAMBA)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": null,
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "\"MEJORAMIENTO DEL SERVICIO DE EDUCACION PRIM...",
+                  "VR / VE / Cuantía de la contratación": "1,369,081.82 Soles",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Fecha y Hora Publicación": "13/03/2026 21:56"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026",
+                    "Fecha Fin": "13/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "18/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "24/03/2026 00:01",
+                    "Fecha Fin": "24/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026",
+                    "Fecha Fin": "25/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026 08:30",
+                    "Fecha Fin": "25/03/2026"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "1b1bf177-e087-4b92-8889-d7f8b41d08c5",
+                      "tipo": "3",
+                      "filename": "Bases_LPA_ALBORADA.docx",
+                      "tamanio": "(20396 KB)",
+                      "local_path": "downloads/1b1bf177-e087-4b92-8889-d7f8b41d08c5_Bases_LPA_ALBORADA.docx"
+                    },
+                    "Fecha de publicación": "13/03/2026 21:56"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "3",
+              "entidad": "MUNICIPALIDAD PROVINCIAL DE PATAZ - TAYABAMBA",
+              "fecha_publicacion": "13/03/2026 21:55",
+              "nomenclatura": "LP-ABR-2-2026-MPP/C-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "¿MEJORAMIENTO DEL SERVICIO DEPORTIVO RECREATIVO COLPABAMBA-DISTRITO DE TAYABAMBA-PROVINCIA DE PATAZ-DEPARTAMENTO LA LIBERTAD¿ CON CUI N°2369724",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "692,341.31",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-2-2026-MPP/C-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD PROVINCIAL DE PATAZ - TAYABAMBA",
+                  "Direccion Legal": "JR. JOSE GALVEZ No 320 TAYABAMBA (LA LIBERTAD-PATAZ-TAYABAMBA)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": null,
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "¿MEJORAMIENTO DEL SERVICIO DEPORTIVO RECREAT...",
+                  "VR / VE / Cuantía de la contratación": "692,341.31 Soles",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Fecha y Hora Publicación": "13/03/2026 21:55"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026",
+                    "Fecha Fin": "13/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "18/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "24/03/2026 00:01",
+                    "Fecha Fin": "24/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026",
+                    "Fecha Fin": "25/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026 08:30",
+                    "Fecha Fin": "25/03/2026"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "dc8d88c5-8b9f-4312-8410-d68631206c04",
+                      "tipo": "3",
+                      "filename": "Bases_LPA_SEGURIDAD CIUDADANA.docx",
+                      "tamanio": "(4010 KB)",
+                      "local_path": "downloads/dc8d88c5-8b9f-4312-8410-d68631206c04_Bases_LPA_SEGURIDAD_CIUDADANA.docx"
+                    },
+                    "Fecha de publicación": "13/03/2026 21:55"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "4",
+              "entidad": "MUNICIPALIDAD PROVINCIAL DE PATAZ - TAYABAMBA",
+              "fecha_publicacion": "13/03/2026 21:53",
+              "nomenclatura": "LP-ABR-1-2026-MPP/C-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "obra ¿MEJORAMIENTO DEL SERVICIO DE SEGURIDAD CIUDADANA LOCAL EN LA CIUDAD DE TAYABAMBA EN EL DISTRITO DE TAYABAMBA DE LA PROVINCIA DE PATAZ DEL DEPARTAMENTO DE LA LIBERTAD¿ con CUI N° 2611552",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "5,752,943.27",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-1-2026-MPP/C-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD PROVINCIAL DE PATAZ - TAYABAMBA",
+                  "Direccion Legal": "JR. JOSE GALVEZ No 320 TAYABAMBA (LA LIBERTAD-PATAZ-TAYABAMBA)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": null,
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "obra ¿MEJORAMIENTO DEL SERVICIO DE SEGURIDAD...",
+                  "VR / VE / Cuantía de la contratación": "5,752,943.27 Soles",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Fecha y Hora Publicación": "13/03/2026 21:53"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026",
+                    "Fecha Fin": "13/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "18/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "24/03/2026 00:01",
+                    "Fecha Fin": "24/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026",
+                    "Fecha Fin": "25/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026 08:30",
+                    "Fecha Fin": "25/03/2026"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "37e93e48-d526-4a32-adea-f007c3efb522",
+                      "tipo": "3",
+                      "filename": "Bases_LPA_SEGURIDAD CIUDADANA.docx",
+                      "tamanio": "(4010 KB)",
+                      "local_path": "downloads/37e93e48-d526-4a32-adea-f007c3efb522_Bases_LPA_SEGURIDAD_CIUDADANA.docx"
+                    },
+                    "Fecha de publicación": "13/03/2026 21:53"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "5",
+              "entidad": "MUNICIPALIDAD PROVINCIAL DE SANCHEZ CARRION - HUAMACHUCO",
+              "fecha_publicacion": "13/03/2026 18:10",
+              "nomenclatura": "LP-ABR-7-2025-MPSC.-2",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "CONTRATACION DE EJECUCION DE OBRA:IOARR CONSTRUCCION DE CALZADA, VEREDA CUNETA Y MURO DE CONTENCION ADEMÁS DE OTROS ACTIVOS EN EL LA JR. LOS GERANIOS CUADRA 01 Y JR. 02 DE MAYO CUADRA 02 Y 03 DEL MICRO SECTOR BELLAVISTA JUNTA VECINAL N 01 DISTRITO DE HUAMACHUCO PROVINCIA SANCHEZ CARRION",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "---",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-7-2025-MPSC.-2",
+                  "N° Convocatoria": "2",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD PROVINCIAL DE SANCHEZ CARRION - HUAMACHUCO",
+                  "Direccion Legal": "JR. RAMON CASTILLA NO 564 (LA LIBERTAD-SANCHEZ CARRION-HUAMACHUCO)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": null,
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "CONTRATACION DE EJECUCION DE OBRA:IOARR CONS...",
+                  "VR / VE / Cuantía de la contratación": "---",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Monto del costo de Reproducción de las Bases": "7.00",
+                  "Lugar y cuenta de pago del costo de Reproducción de las Bases": {
+                    "Banco": "Caja de la Entidad",
+                    "Cuenta": null
+                  },
+                  "Fecha y Hora Publicación": "13/03/2026 18:10"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026",
+                    "Fecha Fin": "13/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "18/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "24/03/2026 00:01",
+                    "Fecha Fin": "24/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "OFICINA DE INFRAESTRUCTURA",
+                    "Fecha Inicio": "25/03/2026",
+                    "Fecha Fin": "25/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026 08:30",
+                    "Fecha Fin": "25/03/2026"
+                  }
+                ],
+                "entidad_contratante": [
+                  {
+                    "N° Ruc": "20141897935",
+                    "Entidad Contratante": "MUNICIPALIDAD PROVINCIAL DE SANCHEZ CARRION - HUAMACHUCO"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "ad3869f1-4583-47be-8ed3-3a38ab7b5b12",
+                      "tipo": "3",
+                      "filename": "BASES  OBRA LOS GERANIOS.pdf",
+                      "tamanio": "(75571 KB)",
+                      "local_path": "downloads/ad3869f1-4583-47be-8ed3-3a38ab7b5b12_BASES__OBRA_LOS_GERANIOS.pdf"
+                    },
+                    "Fecha de publicación": "13/03/2026 18:10"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "6",
+              "entidad": "MUNICIPALIDAD DISTRITAL DE LA ESPERANZA - TRUJILLO",
+              "fecha_publicacion": "13/03/2026 16:50",
+              "nomenclatura": "LP-ABR-6-2025-MDE/C--2",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "EJECUCION DE LA OBRA \"MEJORAMIENTO Y AMPLIACION DEL SERVICIO DE PRACTICA DEPORTIVA Y/O RECREATIVA EN MZ. B LT 1 AA.HH NUEVO JERUSALEN SECTOR I DISTRITO DE LA ESPERANZA,PROVINCIA DE TRUJILLO, DEPARTAMENTO DE LA LIBERTAD\"",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "2,354,051.09",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-6-2025-MDE/C--2",
+                  "N° Convocatoria": "2",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD DISTRITAL DE LA ESPERANZA - TRUJILLO",
+                  "Direccion Legal": "JR. CARLOS MARIA DE ALVEAR Nº 999 (LA LIBERTAD-TRUJILLO-LA ESPERANZA)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": "044-272478",
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "EJECUCION DE LA OBRA \"MEJORAMIENTO Y AMPLIA...",
+                  "VR / VE / Cuantía de la contratación": "2,354,051.09 Soles",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Monto del costo de Reproducción de las Bases": "5.00",
+                  "Lugar y cuenta de pago del costo de Reproducción de las Bases": {
+                    "Banco": "Caja de la Entidad",
+                    "Cuenta": null
+                  },
+                  "Fecha y Hora Publicación": "13/03/2026 16:50"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026",
+                    "Fecha Fin": "13/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "24/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "14/03/2026 00:01",
+                    "Fecha Fin": "18/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "25/03/2026 00:01",
+                    "Fecha Fin": "25/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "26/03/2026",
+                    "Fecha Fin": "26/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "26/03/2026 16:30",
+                    "Fecha Fin": "26/03/2026"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Informe que sustenta la declaratoria de Desierto",
+                    "Archivo": {
+                      "uuid": "4d15db83-d280-4678-b98e-f31e58aa637a",
+                      "tipo": "3",
+                      "filename": "INFORME DE DESIERTO 2026  NUEVO JERUSALEN.pdf",
+                      "tamanio": "(246 KB)",
+                      "local_path": "downloads/4d15db83-d280-4678-b98e-f31e58aa637a_INFORME_DE_DESIERTO_2026__NUEVO_JERUSALEN.pdf"
+                    },
+                    "Fecha de publicación": "13/03/2026 16:50"
+                  },
+                  {
+                    "Nro": "2",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "1048de67-f1bc-4d59-8078-7ca2305ec585",
+                      "tipo": "3",
+                      "filename": "25. BASES COMPLEJO NUEVO JERUSALEN  SEGUNDA CONVOCATORIA.pdf",
+                      "tamanio": "(3053 KB)",
+                      "local_path": "downloads/1048de67-f1bc-4d59-8078-7ca2305ec585_25._BASES_COMPLEJO_NUEVO_JERUSALEN__SEGUNDA_CONVOCATORIA.pdf"
+                    },
+                    "Fecha de publicación": "13/03/2026 16:50"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "7",
+              "entidad": "MUNICIPALIDAD DISTRITAL DE PACASMAYO",
+              "fecha_publicacion": "12/03/2026 21:39",
+              "nomenclatura": "LP-ABR-1-2026-MDP-CS-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "COTRATACION PARA LA EJECUCIÓN DE LA OBRA: \"CONSTRUCCION DE CERCO PERIMETRICO; EN EL(LA) COMPAÑÍA DE BOMBEROS SALVADORA DE PACASMAYO N°23 DEL DISTRITO DE PACASMAYO, PROVINCIA PACASMAYO, DEPARTAMENTO LA LIBERTAD-CUI N°2643058",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "---",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-1-2026-MDP-CS-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD DISTRITAL DE PACASMAYO",
+                  "Direccion Legal": "MANCO CAPAC Nº 45 - PACASMAYO (LA LIBERTAD-PACASMAYO-PACASMAYO)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": "044-523101",
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "COTRATACION PARA LA EJECUCIÓN DE LA OBRA: \"C...",
+                  "VR / VE / Cuantía de la contratación": "---",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Monto del costo de Reproducción de las Bases": "10.00",
+                  "Lugar y cuenta de pago del costo de Reproducción de las Bases": {
+                    "Banco": "Caja de la Entidad",
+                    "Cuenta": null
+                  },
+                  "Fecha y Hora Publicación": "12/03/2026 21:39"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "12/03/2026",
+                    "Fecha Fin": "12/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "22/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "17/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "18/03/2026",
+                    "Fecha Fin": "18/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "OFICINA DE LOGISTICA Y CONTROL PATRIMONIAL",
+                    "Fecha Inicio": "18/03/2026",
+                    "Fecha Fin": "18/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "23/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "OFICINA DE LOGISTICA Y CONTROL PATRIMONIAL",
+                    "Fecha Inicio": "24/03/2026",
+                    "Fecha Fin": "24/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "OFICINA DE LOGISTICA Y CONTROL PATRIMONIAL",
+                    "Fecha Inicio": "24/03/2026 10:00",
+                    "Fecha Fin": "24/03/2026"
+                  }
+                ],
+                "entidad_contratante": [
+                  {
+                    "N° Ruc": "20175113194",
+                    "Entidad Contratante": "MUNICIPALIDAD DISTRITAL DE PACASMAYO"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "dcc3c089-82e1-42c9-8b77-58338f220d9a",
+                      "tipo": "3",
+                      "filename": "BASES ESTANDAR.pdf",
+                      "tamanio": "(42348 KB)",
+                      "local_path": "downloads/dcc3c089-82e1-42c9-8b77-58338f220d9a_BASES_ESTANDAR.pdf"
+                    },
+                    "Fecha de publicación": "12/03/2026 21:39"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "8",
+              "entidad": "MUNICIPALIDAD DISTRITAL DE PARCOY",
+              "fecha_publicacion": "12/03/2026 18:17",
+              "nomenclatura": "LP-ABR-1-2026-MDP/CS-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "CONSTRUCCION DE MURO DE CONTENCION EN EL(LA) VIVIENDAS DEL CENTRO POBLADO DE UCHUCUAYO DISTRITO DE PARCOY PROVINCIA PATAZ DEPARTAMENTO LA LIBERTAD CON CUI 2708018",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "---",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-1-2026-MDP/CS-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD DISTRITAL DE PARCOY",
+                  "Direccion Legal": "JR SAN MARTIN NO 859 PARCOY (LA LIBERTAD-PATAZ-PARCOY)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": "940181422",
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "CONSTRUCCION DE MURO DE CONTENCION EN EL(LA)...",
+                  "VR / VE / Cuantía de la contratación": "---",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Fecha y Hora Publicación": "12/03/2026 18:17"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "12/03/2026",
+                    "Fecha Fin": "12/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "22/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "17/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "18/03/2026",
+                    "Fecha Fin": "18/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "A TRAVES DEL SEACE DE LA PLADICOP",
+                    "Fecha Inicio": "18/03/2026",
+                    "Fecha Fin": "18/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "23/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "A TRAVES DEL SEACE DE LA PLADICOP",
+                    "Fecha Inicio": "24/03/2026",
+                    "Fecha Fin": "24/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "A TRAVES DEL SEACE DE LA PLADICOP",
+                    "Fecha Inicio": "24/03/2026 08:30",
+                    "Fecha Fin": "24/03/2026"
+                  }
+                ],
+                "entidad_contratante": [
+                  {
+                    "N° Ruc": "20200270968",
+                    "Entidad Contratante": "MUNICIPALIDAD DISTRITAL DE PARCOY"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "fe09aec8-322e-4607-b044-a31a1d164583",
+                      "tipo": "3",
+                      "filename": "BASES_UCHUCUAYO.rar",
+                      "tamanio": "(83482 KB)",
+                      "local_path": "downloads/fe09aec8-322e-4607-b044-a31a1d164583_BASES_UCHUCUAYO.rar"
+                    },
+                    "Fecha de publicación": "12/03/2026 18:17"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "9",
+              "entidad": "MUNICIPALIDAD DISTRITAL DE VICTOR LARCO HERRERA",
+              "fecha_publicacion": "12/03/2026 17:43",
+              "nomenclatura": "LP-ABR-3-2026-MDVLH-CS-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "RENOVACION DE CALZADA O PISTA; EN EL(LA) DE LAS CALLES LOS SAUCES Y CALLE LOS CEDROS EN LA URB. VISTA ALEGRE DEL DISTRITO DE VICTOR LARCO HERRERA, PROVINCIA TRUJILLO, DEPARTAMENTO LA LIBERTAD. CUI N° 2719525",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "---",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-3-2026-MDVLH-CS-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD DISTRITAL DE VICTOR LARCO HERRERA",
+                  "Direccion Legal": "JR.INDEPENDENCIA Nº 210 - BUENOS AIRES (LA LIBERTAD-TRUJILLO-VICTOR LARCO HERRERA)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": "44481549",
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "RENOVACION DE CALZADA O PISTA; EN EL(LA) DE ...",
+                  "VR / VE / Cuantía de la contratación": "---",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Fecha y Hora Publicación": "12/03/2026 17:43"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "12/03/2026",
+                    "Fecha Fin": "12/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "17/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "18/03/2026",
+                    "Fecha Fin": "18/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "SUB GERENCIA DE ABASTECIMIENTO SERVICIOS GENERALES Y CONTROL PATRIMONIAL",
+                    "Fecha Inicio": "18/03/2026",
+                    "Fecha Fin": "18/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "24/03/2026 00:01",
+                    "Fecha Fin": "24/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "SUB GERENCIA DE ABASTECIMIENTO SERVICIOS GENERALES Y CONTROL PATRIMONIAL",
+                    "Fecha Inicio": "25/03/2026",
+                    "Fecha Fin": "25/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "SUB GERENCIA DE ABASTECIMIENTO SERVICIOS GENERALES Y CONTROL PATRIMONIAL",
+                    "Fecha Inicio": "25/03/2026 08:30",
+                    "Fecha Fin": "25/03/2026"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "ac18c1a6-3484-4b62-a5be-75a638f49699",
+                      "tipo": "3",
+                      "filename": "BASES SAUCES.pdf",
+                      "tamanio": "(3706 KB)",
+                      "local_path": "downloads/ac18c1a6-3484-4b62-a5be-75a638f49699_BASES_SAUCES.pdf"
+                    },
+                    "Fecha de publicación": "12/03/2026 17:43"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "10",
+              "entidad": "MUNICIPALIDAD DISTRITAL DE LA ESPERANZA - TRUJILLO",
+              "fecha_publicacion": "12/03/2026 17:00",
+              "nomenclatura": "LP-ABR-1-2026-MDE/C-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "EJECUCION DE OBRA: MEJORAMIENTO DEL SERVICIO DE TRANSITABILIDAD VEHICULAR Y PEATONAL EN EL SECTOR SANTA VERONICA, DISTRITO DE LA ESPERANZA - TRUJILLO - LA LIBERTAD / V ETAPA: CALLE MARCO DEL PONT CON CODIGO UNICO DE INVERSIÓN 2373883",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "2,106,117.06",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-1-2026-MDE/C-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD DISTRITAL DE LA ESPERANZA - TRUJILLO",
+                  "Direccion Legal": "JR. CARLOS MARIA DE ALVEAR Nº 999 (LA LIBERTAD-TRUJILLO-LA ESPERANZA)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": "044-272478",
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "EJECUCION DE OBRA: MEJORAMIENTO DEL SERVICIO...",
+                  "VR / VE / Cuantía de la contratación": "2,106,117.06 Soles",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Monto del costo de Reproducción de las Bases": "5.00",
+                  "Lugar y cuenta de pago del costo de Reproducción de las Bases": {
+                    "Banco": "Caja de la Entidad",
+                    "Cuenta": null
+                  },
+                  "Fecha y Hora Publicación": "12/03/2026 17:00"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "12/03/2026",
+                    "Fecha Fin": "12/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "22/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "17/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "18/03/2026",
+                    "Fecha Fin": "18/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "18/03/2026",
+                    "Fecha Fin": "18/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "23/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "24/03/2026",
+                    "Fecha Fin": "24/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "24/03/2026 16:30",
+                    "Fecha Fin": "24/03/2026"
+                  }
+                ],
+                "entidad_contratante": [
+                  {
+                    "N° Ruc": "20164091547",
+                    "Entidad Contratante": "MUNICIPALIDAD DISTRITAL DE LA ESPERANZA - TRUJILLO"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "6c85527d-24dc-4fce-b743-5251186ad300",
+                      "tipo": "3",
+                      "filename": "BASES SANTA VERONICA.rar",
+                      "tamanio": "(4126 KB)",
+                      "local_path": "downloads/6c85527d-24dc-4fce-b743-5251186ad300_BASES_SANTA_VERONICA.rar"
+                    },
+                    "Fecha de publicación": "12/03/2026 17:00"
+                  }
+                ]
+              }
+            },
+            {
+              "numero": "11",
+              "entidad": "MUNICIPALIDAD DISTRITAL DE MARCABAL",
+              "fecha_publicacion": "12/03/2026 15:39",
+              "nomenclatura": "LP-ABR-1-2026-MDM/ C-1",
+              "reiniciado_desde": "",
+              "objeto_de_contratacion": "Obra",
+              "descripcion": "EJECUCION DE PROYECTO \"CONSTRUCCION DE AUDITORIO; EN EL(LA) I.E. 81932 SEÑOR DE LA MISERICORDIA EN EL CENTRO POBLADO CUSHURO DE PAMPATAC, DISTRITO DE MARCABAL, PROVINCIA SANCHEZ CARRION, DEPARTAMENTO LA LIBERTAD\" CON CUI 2680357",
+              "codigo_snip": "",
+              "codigo_cui": "",
+              "monto": "---",
+              "moneda": "Soles",
+              "version_seace": "3",
+              "ficha": {
+                "convocatoria": {
+                  "Nomenclatura": "LP-ABR-1-2026-MDM/ C-1",
+                  "N° Convocatoria": "1",
+                  "Tipo Compra o Selección": "Por la Entidad",
+                  "Normativa Aplicable": "Ley N° 32069 - Ley General de Contrataciones Públicas",
+                  "Versión SEACE": "3",
+                  "Entidad Convocante": "MUNICIPALIDAD DISTRITAL DE MARCABAL",
+                  "Direccion Legal": "SEÑOR DE LA MISERICORDIA S/N (LA LIBERTAD-SANCHEZ CARRION-MARCABAL)",
+                  "Pagina Web": null,
+                  "Télefono de la Entidad": null,
+                  "Objeto de Contratación": "Obra",
+                  "Descripción del Objeto": "EJECUCION DE PROYECTO \"CONSTRUCCION DE AUDIT...",
+                  "VR / VE / Cuantía de la contratación": "---",
+                  "Monto del Derecho de Participacion": "GRATUITO",
+                  "Monto del costo de Reproducción de las Bases": "5.00",
+                  "Lugar y cuenta de pago del costo de Reproducción de las Bases": {
+                    "Banco": "Caja de la Entidad",
+                    "Cuenta": null
+                  },
+                  "Fecha y Hora Publicación": "12/03/2026 15:39"
+                },
+                "lugar_de_ejecucion": {},
+                "cronograma": [
+                  {
+                    "Etapa": "Convocatoria",
+                    "Lugar": null,
+                    "Fecha Inicio": "12/03/2026",
+                    "Fecha Fin": "12/03/2026"
+                  },
+                  {
+                    "Etapa": "Registro de participantes(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "23/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Formulación de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "13/03/2026 00:01",
+                    "Fecha Fin": "18/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Absolución de consultas y observaciones(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Integración de las Bases",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "19/03/2026",
+                    "Fecha Fin": "19/03/2026"
+                  },
+                  {
+                    "Etapa": "Presentación de propuestas(Electronica)",
+                    "Lugar": null,
+                    "Fecha Inicio": "24/03/2026 00:01",
+                    "Fecha Fin": "24/03/2026 23:59"
+                  },
+                  {
+                    "Etapa": "Calificación y Evaluación de propuestas",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026",
+                    "Fecha Fin": "25/03/2026"
+                  },
+                  {
+                    "Etapa": "Otorgamiento de la Buena Pro",
+                    "Lugar": "SEACE",
+                    "Fecha Inicio": "25/03/2026 08:30",
+                    "Fecha Fin": "25/03/2026"
+                  }
+                ],
+                "documentos": [
+                  {
+                    "Nro": "1",
+                    "Etapa": "Convocatoria",
+                    "Documento": "Bases Administrativas",
+                    "Archivo": {
+                      "uuid": "4287a833-e48c-40fa-81fd-ed28be5b8418",
+                      "tipo": "3",
+                      "filename": "BASES ADMINISTRATIVAS 2.pdf",
+                      "tamanio": "(28665 KB)",
+                      "local_path": "downloads/4287a833-e48c-40fa-81fd-ed28be5b8418_BASES_ADMINISTRATIVAS_2.pdf"
+                    },
+                    "Fecha de publicación": "12/03/2026 15:39"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        []
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Split Out Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Licitaciones": {
+      "main": [
+        [
+          {
+            "node": "New Item?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Items": {
+      "main": [
+        [
+          {
+            "node": "Licitaciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Cronograma": {
+      "main": [
+        [
+          {
+            "node": "Cronogramas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Id to Items": {
+      "main": [
+        [
+          {
+            "node": "Split Out Documentos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split Out Cronograma",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convocatoria",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split Out Entidad Contratante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Documentos": {
+      "main": [
+        [
+          {
+            "node": "Documentos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Item?": {
+      "main": [
+        [
+          {
+            "node": "Map Id to Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Entidad Contratante": {
+      "main": [
+        [
+          {
+            "node": "Entidad Contratante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "f9620af7-565b-42e7-ada9-bdb82c07eb9e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "19b5c45878e0c37a2dfdebb10fe6ad07185f82630e5b3f64f267192bd053cf0b"
+  },
+  "id": "dRcli8JjrQZ_O7ca570Ow",
+  "tags": []
+}

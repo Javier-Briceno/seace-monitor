@@ -31,5 +31,9 @@ logs/
 # Playwright browsers
 /ms-playwright/
 
+# Folder to store documents (pdfs, docx, etc...)
+seace_downloads/
+
 # Folder created when runned locally
 downloads/
+
