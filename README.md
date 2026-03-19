@@ -1,4 +1,4 @@
-# SEACE Data Acquisition & Alert Microservice
+# SEACE Monitor
 
 *English version below / Deutsche Version zuerst*
 
@@ -6,101 +6,115 @@
 
 ## 🇩🇪 Deutsche Version
 
-> ⚠️ **Status: Work in Progress** – Kernfunktionalität implementiert. 
-> Aktuell Optimierung des Detail-Extraktionsmoduls.
+> ⚠️ **Status: Work in Progress** – Kern-Scraping-Pipeline vollständig implementiert.
+> Aktuell: n8n-Workflow-Integration und PDF-Analyse in Entwicklung.
 
 ### Über das Projekt
 
-Automatisierter REST-Microservice zur täglichen Überwachung und Extraktion 
-von Ausschreibungsdaten aus dem peruanischen Beschaffungsportal SEACE 
-(Sistema Electrónico de Contrataciones del Estado) mit intelligentem 
-Benachrichtigungssystem.
+Automatisiertes System zur täglichen Überwachung und Extraktion von Ausschreibungsdaten
+aus dem peruanischen Beschaffungsportal SEACE (Sistema Electrónico de Contrataciones del Estado).
+Bestehend aus einem REST-Microservice (`seace-runner`) und einem n8n-Orchestrierungs-Workflow.
 
-**Hintergrund:** Dieses Projekt entstand aus einem praktischen Bedarf: 
-Um neue öffentliche Ausschreibungen auf dem peruanischen SEACE-Portal 
-zu finden, musste die Website täglich manuell überprüft werden. Dieser
-repetitive und zeitaufwändige Prozess führte zur Entwicklung einer 
-vollständig automatisierten Lösung.
+**Hintergrund:** Das SEACE-Portal musste täglich manuell auf neue Ausschreibungen
+überprüft werden — ein repetitiver, zeitaufwändiger Prozess. Dieses Projekt automatisiert
+die vollständige Pipeline: von der Extraktion bis zur Benachrichtigung.
 
 **Projektziel:** Entwicklung eines **täglichen Monitoring-Systems**, das:
-1. Neue Ausschreibungen automatisch täglich erkennt
-2. Relevante Änderungen identifiziert (neue Verfahren/Projekte, Status-Updates)
-3. Automatische Benachrichtigungen/Alerts mit allen Details zu jeder neuen Veröffentlichung versendet
-4. Die manuelle Kontrolle vollständig überflüssig macht
-
-**Technisches Ziel:** Demonstration von:
-- Scheduled Task Automation (Cron-basierte Orchestrierung)
-- Change Detection & Data Diffing
-- Web Scraping at Scale
-- Microservice-Architektur mit Alert-System
-- Docker-Containerisierung
-- RESTful API Design
+1. Neue Ausschreibungen automatisch täglich erkennt (inkrementelles Scraping via `fecha_desde`)
+2. Vollständige Ficha-Daten extrahiert (Convocatoria, Cronograma, Dokumente)
+3. Zugehörige PDF/DOCX-Dokumente herunterlädt
+4. Daten strukturiert in PostgreSQL speichert
+5. Automatische Benachrichtigungen mit allen relevanten Details versendet
 
 ---
 
 ### 🚀 Implementierte Features
 
 #### Vollständig implementiert ✅
-- **Automatisierte tägliche Extraktion** von 500+ Ausschreibungen pro Workflow-Durchlauf
-- **Multi-Page-Verarbeitung** von Suchergebnissen mit intelligenter Paginierung
-- **ETL-Pipeline** mit strukturierter JSON-Transformation und Datenspeicherung
-- **Produktionsreife Infrastruktur:** Docker Compose + VPN-Networking (NordVPN)
-- **Health-Check-Endpoints** und strukturiertes Logging für Monitoring
-- **Token-basierte Authentifizierung** für API-Sicherheit
-- **Change Detection Logic** zur Identifizierung neuer Ausschreibungen (Basis-Implementation)
+
+**seace-runner (REST Microservice):**
+- `POST /seace/export` – Startet Scraping-Run mit Filtern (Departamento, Objeto, Año, fecha_desde)
+- `GET /health` – Health-Check-Endpoint
+- Token-basierte Authentifizierung (Bearer Token)
+- Inkrementelles Scraping: stoppt automatisch bei Einträgen vor `fecha_desde`
+- Multi-Page-Pagination mit PrimeFaces DataTable Widget
+- Vollständige Ficha-Extraktion pro Licitación:
+  - **Convocatoria** (Nomenclatura, Entidad, Monto, Normativa, etc.)
+  - **Cronograma** (Etapas mit Fecha Inicio/Fin und Lugar)
+  - **Documentos** (Metadaten + automatischer Download von PDF/DOCX/ZIP)
+  - **Entidad Contratante** (RUC, Name)
+  - **Acuerdos Comerciales**
+- Automatischer Dokumenten-Download über Browser-Session (Alfresco ECM)
+- Strukturiertes Logging mit Timestamps
+- Debug-Screenshots pro Ficha
+- NordVPN-Integration (peruanische IP für Geo-Blocking-Umgehung)
+- Docker Compose Setup
+
+**n8n Workflow:**
+- HTTP Request zu seace-runner `/export`
+- Split & Insert in PostgreSQL:
+  - Tabelle `licitaciones` (mit UNIQUE auf `nomenclatura` für Deduplizierung)
+  - Tabelle `cronograma`
+  - Tabelle `documentos`
+  - Tabelle `convocatoria`
+  - Tabelle `entidad_contratante`
+- If-Node verhindert doppelte Inserts für bereits bekannte Licitaciones
+- Volumen-Sharing zwischen seace-runner und n8n für PDF-Zugriff
 
 #### In Bearbeitung 🔧
-- Optimierung des Detail-Extraktionsmoduls (Debugging von Edge Cases in der 
-  Seitenpaginierung)
-- Integration des Alert/Notification-Systems (E-Mail oder Messaging-Integration geplant)
-- Persistente Datenspeicherung mit PostgreSQL für historischen Datenvergleich
+- PDF-Analyse mit Claude API (Anforderungen, Erfahrungsnachweise, Fristen)
+- Benachrichtigungssystem (E-Mail / Telegram)
+- Async Job-System für lange Scraping-Runs (Job-ID + Polling)
 
 #### Geplant 📋
-- Automatisches Scheduling (täglich um 08:00 Uhr Ortszeit Peru)
-- E-Mail-Benachrichtigungen bei neuen relevanten Ausschreibungen
-- Dashboard für Alert-Übersicht und Konfiguration
-- Filterkriterien für relevante Ausschreibungen (Keywords, Kategorien, Budgetgrenzen)
+- Tägliches automatisches Scheduling (Cron in n8n)
+- Deploy auf Hetzner VPS (24/7 Betrieb)
+- Dashboard für Licitacion-Übersicht
 
 ---
 
 ### 🛠️ Tech Stack
 
 **Backend & API:**
-- **Runtime:** Node.js (Express)
-- **Web Automation:** Playwright (headless browser automation)
+- **Runtime:** Node.js 22 (ESM)
+- **Framework:** Express.js
+- **Web Automation:** Playwright 1.47 (Headless Chromium)
+- **Portal:** SEACE mit PrimeFaces 5.x (Legacy JSF)
 
 **Infrastructure & DevOps:**
 - **Containerization:** Docker, Docker Compose
-- **Networking:** NordVPN-Integration (Geolokalisierung für peruanische Server)
-- **Scheduled Execution:** Node-cron (geplant)
+- **Networking:** NordVPN-Container (Peru-Geolokalisierung)
+- **Orchestrierung:** n8n (Self-hosted)
 
 **Data & Storage:**
-- **Database (geplant):** PostgreSQL (persistente Datenspeicherung & Änderungshistorie)
-- **Data Processing:** ETL-Pipeline mit JSON-Transformation
-
-**Architecture:**
-- RESTful Microservice
-- Event-driven alerts (geplant)
+- **Database:** PostgreSQL 14 mit pgvector
+- **Dokumente:** Bind-Mount Volume (seace_downloads)
+- **Data Processing:** ETL-Pipeline via n8n-Workflow
 
 ---
 
 ### 📁 Projektstruktur
 
 ```
-seace-microservice/
-├── src/
-│   ├── routes/              # API-Endpoints
-│   ├── services/            
-│   │   ├── scraper.js      # Hauptextraktionslogik (Playwright)
-│   │   ├── etl.js          # Datenverarbeitungs-Pipeline
-│   │   ├── detector.js     # Change Detection Logic (in dev)
-│   │   └── notifier.js     # Alert-System (geplant)
-│   ├── utils/              # Helper-Funktionen
-│   ├── config/             # Konfiguration & Umgebungsvariablen
-│   └── models/             # Datenmodelle (geplant)
-├── docker-compose.yml      # Container-Orchestrierung (App + VPN)
-├── Dockerfile
-├── .env.example            # Template für Umgebungsvariablen
+seace-monitor/
+├── seace-runner/
+│   ├── src/
+│   │   ├── server.js              # Express Entry Point
+│   │   ├── middleware/
+│   │   │   └── auth.js            # Bearer Token Auth
+│   │   ├── routes/
+│   │   │   └── seace.js           # /seace/export endpoint
+│   │   ├── scraper/
+│   │   │   ├── browser.js         # Playwright Browser Management
+│   │   │   ├── filters.js         # SEACE Navigation & Filter
+│   │   │   ├── results.js         # Pagination & Row Scraping
+│   │   │   └── ficha.js           # Ficha Detail Scraping + Downloads
+│   │   └── logger.js              # Structured Logging
+│   ├── Dockerfile
+│   └── package.json
+├── seace_downloads/               # Heruntergeladene Dokumente (PDF/DOCX)
+├── docker-compose.yml             # seace-runner + NordVPN
+├── .env.example
 └── README.md
 ```
 
@@ -110,206 +124,241 @@ seace-microservice/
 
 ```bash
 # Repository klonen
-git clone https://github.com/Javier-Briceno/seace-microservice.git
-cd seace-microservice
+git clone https://github.com/Javier-Briceno/seace-monitor.git
+cd seace-monitor
 
 # Umgebungsvariablen konfigurieren
 cp .env.example .env
-# .env bearbeiten mit eigenen Credentials
-
-# Dependencies installieren
-npm install
+# .env bearbeiten: NORDVPN_TOKEN, SEACE_AUTH_TOKEN, PORT
 
 # Mit Docker ausführen
-docker-compose up -d
+docker compose up -d
 
-# API-Health-Check
+# Health-Check
 curl http://localhost:3000/health
 
 # Manuellen Scraping-Run triggern
-curl -X POST http://localhost:3000/api/scrape \
-  -H "Authorization: Bearer YOUR_TOKEN"
+curl -X POST http://localhost:3000/seace/export \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "departamento": "CUSCO",
+    "objeto": "Obra",
+    "anio": "2026",
+    "fecha_desde": "2026-03-15"
+  }'
+```
+
+**Beispiel-Response:**
+```json
+{
+  "total": 6,
+  "meta": {
+    "fuente": "SEACE",
+    "scraped_at": "2026-03-16T20:38:41.000Z",
+    "filtros_aplicados": {
+      "departamento": "CUSCO",
+      "objeto": "Obra",
+      "anio": "2026"
+    }
+  },
+  "items": [
+    {
+      "numero": "1",
+      "entidad": "MUNICIPALIDAD DISTRITAL DE CHAMACA",
+      "nomenclatura": "LP-ABR-1-2026-MDCH-1",
+      "monto": "---",
+      "moneda": "Soles",
+      "ficha": {
+        "convocatoria": { "..." : "..." },
+        "cronograma": [ { "Etapa": "Convocatoria", "Fecha Inicio": "02/02/2026" } ],
+        "documentos": [
+          {
+            "Nro": "1",
+            "Etapa": "Convocatoria",
+            "Documento": "Bases Administrativas",
+            "Archivo": {
+              "uuid": "a462a02b-...",
+              "filename": "bases.docx",
+              "local_path": "downloads/a462a02b-..._bases.docx"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
 ```
 
 ---
 
 ### 🎯 Technische Herausforderungen & Lösungen
 
-**Herausforderung 1: Geo-Blocking**  
-🔧 **Problem:** SEACE-Portal nur von peruanischen IP-Adressen erreichbar  
-✅ **Lösung:** Integration von NordVPN-Container für peruanische IP-Lokalisierung
+**Geo-Blocking**
+- Problem: SEACE nur von peruanischen IPs erreichbar
+- Lösung: NordVPN-Container mit `CONNECT=Peru`
 
-**Herausforderung 2: Dynamische Inhalte**  
-🔧 **Problem:** JavaScript-basierte Rendering verzögert Datenextraktion  
-✅ **Lösung:** Playwright statt einfacher HTTP-Requests für vollständiges DOM-Rendering
+**PrimeFaces Legacy Portal**
+- Problem: Altes JSF-Portal ohne stabile Widget-IDs, reCAPTCHA-Token, AJAX-Queues
+- Lösung: Widget-Zugriff via `window[widgetVar]`-Pattern, `PrimeFaces.ajax.Queue.isEmpty()` als AJAX-Waiter, dynamische Selektor-Suche für instabile IDs
 
-**Herausforderung 3: Skalierbarkeit & tägliche Ausführung**  
-🔧 **Problem:** System muss zuverlässig jeden Tag ohne manuelle Intervention laufen  
-✅ **Lösung:** Docker-basierte Architektur + Node-cron für automatisches Scheduling (in Implementation)
+**Ficha-Navigation**
+- Problem: Ficha öffnet als vollständige Seitennavigation (nicht neuer Tab), Rückkehr muss DataTable-Widget-Reinitialisierung abwarten
+- Lösung: `waitForNavigation` + `waitForSelector('#tbFicha:idFormFichaSeleccion')`, nach Rückkehr `waitForFunction(() => window.widget_tbBuscador_... !== undefined)`
 
-**Herausforderung 4: Change Detection**  
-🔧 **Problem:** Identifizierung neuer Ausschreibungen erfordert historischen Datenvergleich  
-✅ **Lösung:** PostgreSQL-Datenbank mit Timestamp-basiertem Tracking (in Planung)
+**Dokument-Downloads**
+- Problem: Alfresco ECM-Downloads erfordern Session-Cookie von `alfprod.seace.gob.pe`, CORS blockiert direkte Requests, `alf_ticket` in URLs verfällt schnell
+- Lösung: Download via `page.evaluate(() => jsCmsSeaceUtil.descargaPriv(uuid))` + `page.waitForEvent('download')` innerhalb der aktiven Browser-Session
 
-**Bekannte Issues:**  
-- Detail-Extraktionsmodul hat intermittierende Fehler bei bestimmten 
-  Paginierungsmustern (aktiv in Bearbeitung)
-- Alert-System noch nicht implementiert (nächster Meilenstein)
+**Inkrementelles Scraping**
+- Problem: Tägliches Vollscraping aller Seiten ineffizient
+- Lösung: `fecha_desde`-Parameter, Scraping stoppt bei erstem Item vor dem Datum
 
 ---
 
 ### 📊 Use Case & Business Value
 
-**Problem (Ist-Zustand):**
-- Manueller täglicher Check: **30-45 Minuten** pro Tag
-- Hohe Fehleranfälligkeit durch manuelle Überprüfung
-- Verzögerte Reaktion auf neue Ausschreibungen
-- Keine strukturierte Datenspeicherung
-
-**Lösung (Soll-Zustand):**
-- **Vollautomatischer täglicher Scan**: 0 Minuten manuelle Arbeit
-- **Sofortige Benachrichtigung** bei relevanten neuen Ausschreibungen
-- **Historisches Tracking** aller Änderungen
-- **Strukturierte Datenbank** für Analysen und Berichte
-
-**ROI:** ~10-15 Stunden Zeitersparnis pro Monat + erhöhte Reaktionsgeschwindigkeit
+| | Vorher (manuell) | Nachher (automatisch) |
+|---|---|---|
+| Täglicher Aufwand | 30-45 Min | 0 Min |
+| Reaktionszeit | Stunden/Tage | Minuten |
+| Datenspeicherung | Keine | PostgreSQL |
+| Dokumentenzugriff | Manuell | Automatisch heruntergeladen |
 
 ---
 
 ### 📈 Projekthintergrund
 
-Entwickelt im Rahmen meines **Data Engineering**-Portfolios während des 
-B.Sc. Informatik-Studiums an der **Universität Siegen** (Dez 2025 - Feb 2026).
+Entwickelt als Teil meines **Data Engineering**-Portfolios während des
+B.Sc. Informatik-Studiums an der **Universität Siegen**.
 
-**Motivation:** Reales Problem meines Vaters lösen – tägliche manuelle 
-Überwachung von Ausschreibungen durch automatisches Alert-System ersetzen.
-
-**Gelerntes:**
-- Production-ready Infrastructure-Setup mit Docker
-- Umgang mit geografischen Einschränkungen (Geo-blocking)
-- Robuste Error-Handling-Strategien für Web Scraping
-- Containerisierung komplexer Multi-Service-Architekturen
-- Change Detection & Data Diffing Patterns
-- Scheduling & Automation Best Practices
+**Motivation:** Reales Problem lösen – tägliche manuelle Überwachung von
+Ausschreibungen durch ein vollautomatisches System ersetzen.
 
 ---
 
 ### 📫 Kontakt
 
-**Javier Briceño Ticona**  
-🔗 [LinkedIn](https://linkedin.com/in/javier-briceno-ticona)  
-💼 [Portfolio](https://github.com/Javier-Briceno)  
+**Javier Briceño Ticona**
+🔗 [LinkedIn](https://linkedin.com/in/javier-briceno-ticona)
+💼 [Portfolio](https://github.com/Javier-Briceno)
 📧 javierbricenoticona@gmail.com
 
-Informatik B.Sc. Student | Universität Siegen  
-Schwerpunkt: Data Engineering & ETL-Pipelines
-
 ---
 
-### 📝 Lizenz
-
-MIT License – dieses Projekt kann als Referenz genutzt werden.
-
----
 ---
 
 ## 🇬🇧 English Version
 
-> ⚠️ **Status: Work in Progress** – Core functionality operational. 
-> Currently optimizing detail extraction module.
+> ⚠️ **Status: Work in Progress** – Core scraping pipeline fully implemented.
+> Currently: n8n workflow integration and PDF analysis in development.
 
 ### About This Project
 
-Automated REST API microservice for daily monitoring and extraction of 
-procurement data from Peru's SEACE portal (Sistema Electrónico de 
-Contrataciones del Estado) with intelligent alert system.
+Automated system for daily monitoring and extraction of procurement data
+from Peru's SEACE portal (Sistema Electrónico de Contrataciones del Estado).
+Consists of a REST microservice (`seace-runner`) and an n8n orchestration workflow.
 
-**Background:** This project emerged from a practical need:
-To find new public tenders on Peru’s SEACE portal, the website had 
-to be checked manually every day. This repetitive and time-consuming 
-process led to the development of a fully automated solution.
+**Background:** Peru's SEACE portal required manual daily checking for new
+tender listings — a repetitive, time-consuming process. This project automates
+the full pipeline: from extraction to notification.
 
-**Project Goal:** Develop a **daily monitoring system** that:
-
-1. Automatically detects new tender listings every day
-2. Identifies relevant changes (new procedures/projects, status updates)
-3. Sends automatic notifications/alerts with full details for each new publication
-4. Completely eliminates the need for manual checking
-
-
-**Technical Goal:** Demonstrate proficiency in:
-- Scheduled task automation (cron-based orchestration)
-- Change detection & data diffing
-- Web scraping at scale
-- Microservice architecture with alert system
-- Docker containerization
-- RESTful API design
+**Project Goal:** Build a **daily monitoring system** that:
+1. Automatically detects new listings daily (incremental scraping via `fecha_desde`)
+2. Extracts complete ficha data (Convocatoria, Cronograma, Documents)
+3. Downloads associated PDF/DOCX documents
+4. Stores structured data in PostgreSQL
+5. Sends automatic notifications with all relevant details
 
 ---
 
 ### 🚀 Features
 
 #### Fully Implemented ✅
-- **Automated daily extraction** of 500+ procurement listings per workflow run
-- **Multi-page processing** with intelligent pagination handling
-- **ETL pipeline** with structured JSON transformation and data storage
-- **Production infrastructure:** Docker Compose + VPN networking (NordVPN)
-- **Health check endpoints** and structured logging for monitoring
-- **Token-based authentication** for API security
-- **Change detection logic** for identifying new listings (basic implementation)
+
+**seace-runner (REST Microservice):**
+- `POST /seace/export` – Triggers scraping run with filters (Departamento, Objeto, Año, fecha_desde)
+- `GET /health` – Health check endpoint
+- Token-based authentication (Bearer Token)
+- Incremental scraping: automatically stops at entries before `fecha_desde`
+- Multi-page pagination with PrimeFaces DataTable Widget
+- Complete ficha extraction per licitación:
+  - **Convocatoria** (Nomenclatura, Entidad, Monto, Normativa, etc.)
+  - **Cronograma** (Stages with Fecha Inicio/Fin and Lugar)
+  - **Documentos** (Metadata + automatic download of PDF/DOCX/ZIP)
+  - **Entidad Contratante** (RUC, Name)
+  - **Acuerdos Comerciales**
+- Automatic document download via browser session (Alfresco ECM)
+- Structured logging with timestamps
+- Debug screenshots per ficha
+- NordVPN integration (Peruvian IP for geo-blocking bypass)
+- Docker Compose setup
+
+**n8n Workflow:**
+- HTTP Request to seace-runner `/export`
+- Split & Insert into PostgreSQL:
+  - `licitaciones` table (UNIQUE on `nomenclatura` for deduplication)
+  - `cronograma` table
+  - `documentos` table
+  - `convocatoria` table
+  - `entidad_contratante` table
+- If-node prevents duplicate inserts for already known licitaciones
+- Volume sharing between seace-runner and n8n for PDF access
 
 #### In Progress 🔧
-- Detail extraction module optimization (debugging edge cases in page 
-  pagination logic)
-- Alert/Notification system integration (email or messaging integration planned)
-- Persistent data storage with PostgreSQL for historical data comparison
+- PDF analysis with Claude API (requirements, experience proofs, deadlines)
+- Notification system (Email / Telegram)
+- Async job system for long scraping runs (job ID + polling)
 
 #### Planned 📋
-- Automatic scheduling (daily at 08:00 Peru local time)
-- Email notifications for new relevant tender listings
-- Dashboard for alert overview and configuration
-- Filter criteria for relevant listings (keywords, categories, budget thresholds)
+- Daily automatic scheduling (Cron in n8n)
+- Deploy to Hetzner VPS (24/7 operation)
+- Dashboard for licitación overview
 
 ---
 
 ### 🛠️ Tech Stack
 
 **Backend & API:**
-- **Runtime:** Node.js (Express)
-- **Web Automation:** Playwright (headless browser automation)
+- **Runtime:** Node.js 22 (ESM)
+- **Framework:** Express.js
+- **Web Automation:** Playwright 1.47 (Headless Chromium)
+- **Portal:** SEACE with PrimeFaces 5.x (Legacy JSF)
 
 **Infrastructure & DevOps:**
 - **Containerization:** Docker, Docker Compose
-- **Networking:** NordVPN integration (geolocation for Peruvian servers)
-- **Scheduled Execution:** Node-cron (planned)
+- **Networking:** NordVPN container (Peru geolocation)
+- **Orchestration:** n8n (Self-hosted)
 
 **Data & Storage:**
-- **Database (planned):** PostgreSQL (persistent storage & change history)
-- **Data Processing:** ETL pipeline with JSON transformation
-
-**Architecture:**
-- RESTful microservice
-- Event-driven alerts (planned)
+- **Database:** PostgreSQL 14 with pgvector
+- **Documents:** Bind-mount volume (seace_downloads)
+- **Data Processing:** ETL pipeline via n8n workflow
 
 ---
 
 ### 📁 Project Structure
 
 ```
-seace-microservice/
-├── src/
-│   ├── routes/              # API endpoints
-│   ├── services/            
-│   │   ├── scraper.js      # Main extraction logic (Playwright)
-│   │   ├── etl.js          # Data processing pipeline
-│   │   ├── detector.js     # Change detection logic (in dev)
-│   │   └── notifier.js     # Alert system (planned)
-│   ├── utils/              # Helper functions
-│   ├── config/             # Configuration & environment variables
-│   └── models/             # Data models (planned)
-├── docker-compose.yml      # Container orchestration (App + VPN)
-├── Dockerfile
-├── .env.example            # Environment variables template
+seace-monitor/
+├── seace-runner/
+│   ├── src/
+│   │   ├── server.js              # Express entry point
+│   │   ├── middleware/
+│   │   │   └── auth.js            # Bearer token auth
+│   │   ├── routes/
+│   │   │   └── seace.js           # /seace/export endpoint
+│   │   ├── scraper/
+│   │   │   ├── browser.js         # Playwright browser management
+│   │   │   ├── filters.js         # SEACE navigation & filters
+│   │   │   ├── results.js         # Pagination & row scraping
+│   │   │   └── ficha.js           # Ficha detail scraping + downloads
+│   │   └── logger.js              # Structured logging
+│   ├── Dockerfile
+│   └── package.json
+├── seace_downloads/               # Downloaded documents (PDF/DOCX)
+├── docker-compose.yml             # seace-runner + NordVPN
+├── .env.example
 └── README.md
 ```
 
@@ -319,98 +368,86 @@ seace-microservice/
 
 ```bash
 # Clone repository
-git clone https://github.com/Javier-Briceno/seace-microservice.git
-cd seace-microservice
+git clone https://github.com/Javier-Briceno/seace-monitor.git
+cd seace-monitor
 
 # Configure environment variables
 cp .env.example .env
-# Edit .env with your credentials
-
-# Install dependencies
-npm install
+# Edit .env: NORDVPN_TOKEN, SEACE_AUTH_TOKEN, PORT
 
 # Run with Docker
-docker-compose up -d
+docker compose up -d
 
-# API health check
+# Health check
 curl http://localhost:3000/health
 
 # Trigger manual scraping run
-curl -X POST http://localhost:3000/api/scrape \
-  -H "Authorization: Bearer YOUR_TOKEN"
+curl -X POST http://localhost:3000/seace/export \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "departamento": "CUSCO",
+    "objeto": "Obra",
+    "anio": "2026",
+    "fecha_desde": "2026-03-15"
+  }'
 ```
 
 ---
 
 ### 🎯 Technical Challenges & Solutions
 
-**Challenge 1: Geo-blocking**  
-🔧 **Problem:** SEACE portal only accessible from Peruvian IP addresses  
-✅ **Solution:** NordVPN container integration for Peruvian IP localization
+**Geo-blocking**
+- Problem: SEACE only accessible from Peruvian IPs
+- Solution: NordVPN container with `CONNECT=Peru`
 
-**Challenge 2: Dynamic Content**  
-🔧 **Problem:** JavaScript-based rendering delays data extraction  
-✅ **Solution:** Playwright instead of simple HTTP requests for complete DOM rendering
+**PrimeFaces Legacy Portal**
+- Problem: Old JSF portal with unstable widget IDs, reCAPTCHA tokens, AJAX queues
+- Solution: Widget access via `window[widgetVar]` pattern, `PrimeFaces.ajax.Queue.isEmpty()` as AJAX waiter, dynamic selector search for unstable IDs
 
-**Challenge 3: Scalability & Daily Execution**  
-🔧 **Problem:** System must run reliably every day without manual intervention  
-✅ **Solution:** Docker-based architecture + Node-cron for automatic scheduling (in implementation)
+**Ficha Navigation**
+- Problem: Ficha opens as full page navigation (not new tab), return must await DataTable widget reinitialization
+- Solution: `waitForNavigation` + `waitForSelector('#tbFicha:idFormFichaSeleccion')`, after return `waitForFunction(() => window.widget_tbBuscador_... !== undefined)`
 
-**Challenge 4: Change Detection**  
-🔧 **Problem:** Identifying new listings requires historical data comparison  
-✅ **Solution:** PostgreSQL database with timestamp-based tracking (planned)
+**Document Downloads**
+- Problem: Alfresco ECM downloads require session cookie from `alfprod.seace.gob.pe`, CORS blocks direct requests, `alf_ticket` in URLs expires quickly
+- Solution: Download via `page.evaluate(() => jsCmsSeaceUtil.descargaPriv(uuid))` + `page.waitForEvent('download')` within active browser session
 
-**Known Issues:**  
-- Detail extraction module has intermittent errors with certain pagination 
-  patterns (actively being addressed)
-- Alert system not yet implemented (next milestone)
+**Incremental Scraping**
+- Problem: Daily full scraping of all pages is inefficient
+- Solution: `fecha_desde` parameter, scraping stops at first item before the date
 
 ---
 
 ### 📊 Use Case & Business Value
 
-**Problem (Current State):**
-- Manual daily check: **30-45 minutes** per day
-- High error rate from manual verification
-- Delayed response to new tender opportunities
-- No structured data storage
-
-**Solution (Target State):**
-- **Fully automated daily scan**: 0 minutes manual work
-- **Immediate notification** for relevant new listings
-- **Historical tracking** of all changes
-- **Structured database** for analysis and reporting
-
-**ROI:** ~10-15 hours time savings per month + increased response speed
+| | Before (manual) | After (automated) |
+|---|---|---|
+| Daily effort | 30-45 min | 0 min |
+| Response time | Hours/days | Minutes |
+| Data storage | None | PostgreSQL |
+| Document access | Manual | Auto-downloaded |
 
 ---
 
 ### 📈 Project Context
 
-Developed as part of my **Data Engineering** portfolio during B.Sc. 
-Computer Science studies at **Universität Siegen** (Dec 2025 - Feb 2026).
+Developed as part of my **Data Engineering** portfolio during
+B.Sc. Computer Science studies at **Universität Siegen**.
 
-**Motivation:** Solve my father's real problem – replace daily manual 
-monitoring of procurement listings with an automated alert system.
-
-**Key Learnings:**
-- Production-ready infrastructure setup with Docker
-- Handling geographic restrictions (geo-blocking)
-- Robust error handling strategies for web scraping
-- Containerization of complex multi-service architectures
-- Change detection & data diffing patterns
-- Scheduling & automation best practices
+**Motivation:** Solve a real problem — replace daily manual monitoring
+of procurement listings with a fully automated system.
 
 ---
 
 ### 📫 Contact
 
-**Javier Briceño Ticona**  
-🔗 [LinkedIn](https://linkedin.com/in/javier-briceno-ticona)  
-💼 [Portfolio](https://github.com/Javier-Briceno)  
+**Javier Briceño Ticona**
+🔗 [LinkedIn](https://linkedin.com/in/javier-briceno-ticona)
+💼 [Portfolio](https://github.com/Javier-Briceno)
 📧 javierbricenoticona@gmail.com
 
-B.Sc. Computer Science Student | Universität Siegen  
+B.Sc. Computer Science Student | Universität Siegen
 Focus: Data Engineering & ETL Pipelines
 
 ---
