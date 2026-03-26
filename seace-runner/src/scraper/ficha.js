@@ -563,6 +563,7 @@ async function resolveDownloadUrls(page, documentos) {
       }, doc.Archivo.uuid);
       const download = await downloadPromise;
       await download.saveAs(filepath);
+      fs.chmodSync(filepath, 0o644); // owner can read and write, rest can read
 
       log(`[ficha] Downloaded: ${safeFilename} (${fs.statSync(filepath).size} bytes)`);
 
