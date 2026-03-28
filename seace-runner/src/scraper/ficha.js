@@ -1,7 +1,5 @@
 import fs from "fs";
 import { log } from './logger.js';
-const RESULTS_TBODY = 'tbody[id="tbBuscador:idFormBuscarProceso:dtProcesos_data"]';
-const FICHA_FORM    = "#tbFicha\\:idFormFichaSeleccion";
 
 /**
  * Clicks on the "Ficha de Selección" link for a given row,
@@ -565,13 +563,32 @@ async function resolveDownloadUrls(page, documentos) {
       await download.saveAs(filepath);
       fs.chmodSync(filepath, 0o644); // owner can read and write, rest can read
 
-      log(`[ficha] Downloaded: ${safeFilename} (${fs.statSync(filepath).size} bytes)`);
+      let pageCount = null;
+      let fileSizeMB = null;
+
+      const fileSizeBytes = fs.statSync(filepath).size;
+      fileSizeMB = fileSizeBytes / (1024 * 1024);
+
+      if (filepath.toLowerCase().endsWith('.pdf')) {
+        try {
+          const { PDFDocument } = await import('pdf-lib');
+          const pdfBytes = fs.readFileSync(filepath);
+          const pdfDoc = await PDFDocument.load(pdfBytes);
+          pageCount = pdfDoc.getPageCount();
+        } catch (e) {
+          log(`[ficha] Could not count pages for ${safeFilename}: ${e.message}`);
+        }
+      }
+
+      log(`[ficha] Downloaded: ${safeFilename} (${fileSizeBytes} bytes, ${pageCount ?? '?'} pages)`);
 
       resolved.push({
         ...doc,
         Archivo: {
           ...doc.Archivo,
-          local_path: filepath
+          local_path: filepath,
+          pageCount: pageCount,
+          fileSizeMB: fileSizeMB
         }
       });
     } catch (e) {
