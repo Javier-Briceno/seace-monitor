@@ -1,6 +1,7 @@
 import express from 'express';
 import { authMiddleware } from './middleware/auth.js';
 import { seaceRouter } from './routes/seace.js';
+import { pdfRouter } from './routes/pdf.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +13,7 @@ app.get('/health', (req, res) => {
 })
 
 app.use('/seace', authMiddleware, seaceRouter);
+app.use('/pdf', authMiddleware, pdfRouter);
 
 app.get('/myip', async (req, res) => {
   const response = await fetch('https://api.ipify.org?format=json');
