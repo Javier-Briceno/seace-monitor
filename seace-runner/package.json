@@ -11,6 +11,8 @@
   "dependencies": {
     "express": "^4.19.2",
     "playwright": "1.47.0",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "adm-zip": "^0.5.16",
+    "mammoth": "^1.8.0"
   }
 }
