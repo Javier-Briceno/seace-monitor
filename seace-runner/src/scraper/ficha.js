@@ -569,7 +569,8 @@ async function resolveDownloadUrls(page, documentos) {
       const fileSizeBytes = fs.statSync(filepath).size;
       fileSizeMB = fileSizeBytes / (1024 * 1024);
 
-      if (filepath.toLowerCase().endsWith('.pdf')) {
+      const isPDF = filepath.toLowerCase().endsWith('.pdf');
+      if (isPDF) {
         try {
           const { PDFDocument } = await import('pdf-lib');
           const pdfBytes = fs.readFileSync(filepath);
@@ -588,7 +589,10 @@ async function resolveDownloadUrls(page, documentos) {
           ...doc.Archivo,
           local_path: filepath,
           pageCount: pageCount,
-          fileSizeMB: fileSizeMB
+          fileSizeMB: fileSizeMB,
+          exceedsClaudeLimit: isPDF 
+              ? (fileSizeMB > 22 || pageCount > 100 || pageCount === null)
+              : false,
         }
       });
     } catch (e) {

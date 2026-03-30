@@ -54,7 +54,8 @@ pdfRouter.post('/base64', async (req, res) => {
             mimeType: 'application/pdf',
             filePath,
             fileSizeMB,
-            pageCount, 
+            pageCount,
+            exceedsClaudeLimit: fileSizeMB > 22 || pageCount > 100 || pageCount === null 
         });
     
     } catch(e) {
