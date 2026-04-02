@@ -13,7 +13,7 @@ services:
       # Allows communication between containers in the same network
       # 172.0.0.0/8 is the default subnet for docker networks, and
       # 192.168.0.0/16 is a common private IP range used in home networks
-      - NETWORK=172.0.0.0/8,192.168.0.0/16
+      - NETWORK=172.0.0.0/8,192.168.0.0/16, 172.19.0.0/16
     ports:
       # seace-runner ports 
       - "3000:3000"
@@ -23,7 +23,7 @@ services:
       - net.ipv6.conf.all.disable_ipv6=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fs", "https://api.nordvpn.com/vpn/check/full"]
+      test: ["CMD", "curl", "-fs", "https://nordvpn.com"]
       interval: 60s
       timeout: 10s
       start_period: 30s
@@ -44,6 +44,21 @@ services:
       - vpn
     environment:
       - AUTH_TOKEN=${SEACE_AUTH_TOKEN}
+    restart: unless-stopped
+  
+  # PDF EXTRACTOR
+  pdf-extractor:
+    build:
+      context: ./pdf-extractor
+    container_name: pdf-extractor
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./seace_downloads:/app/downloads
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    networks:
+      - internal
     restart: unless-stopped
 
 networks:
