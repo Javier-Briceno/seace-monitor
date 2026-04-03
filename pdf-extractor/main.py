@@ -2,6 +2,7 @@ import os, base64, uuid, threading, sys
 import fitz, pymupdf4llm, anthropic
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import time
 
 app = FastAPI()
 
@@ -45,33 +46,40 @@ def extract_text_pages(abs_path: str, page_numbers: list[int]) -> str:
     )
 
 # SCANNED EXTRACTION
-def extract_scanned_page(page: fitz.Page, page_num: int) -> str:
+def extract_scanned_page(page: fitz.Page, retries=3) -> str:
     mat = fitz.Matrix(150 / 72, 150 / 72) # # 150 DPI — enough for printed text
     pix = page.get_pixmap(matrix=mat)
     img_base64 = base64.standard_b64encode(pix.tobytes("jpeg", jpg_quality=85)).decode()
     
-    resp = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {"type": "base64", "media_type": "image/jpeg", "data": img_base64},
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        "Transcribe el texto de esta página exactamente como aparece. "
-                        "Preserva estructura, tablas y formato. "
-                        "Solo el texto, sin comentarios ni explicaciones."   
-                    ),
-                },
-            ],    
-        }],
-    )
-    return resp.content[0].text
+    for attempt in range(retries):
+        try:
+            resp = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/jpeg", "data": img_base64},
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Transcribe el texto de esta página exactamente como aparece. "
+                                "Preserva estructura, tablas y formato. "
+                                "Solo el texto, sin comentarios ni explicaciones."   
+                            ),
+                        },
+                    ],    
+                }],
+            )
+            return resp.content[0].text
+        except Exception as e:
+            if attempt < retries -1:
+                time.sleep(10 * (attempt + 1)) # backoff: 10s, 20s
+                continue
+            return f"[Error on page: {str(e)}]"
 
 # WORKER
 def run_extraction(job_id: str, file_path: str):
@@ -105,7 +113,7 @@ def run_extraction(job_id: str, file_path: str):
         scanned_parts = []
         for idx, page_num in enumerate(scanned_pages):
             print(f"[{job_id[:8]}] Scan {idx + 1} / {len(scanned_pages)} (page {page_num + 1})...", flush=True)
-            page_text = extract_scanned_page(doc[page_num], page_num)
+            page_text = extract_scanned_page(doc[page_num])
             scanned_parts.append(f"\n\n--- Page {page_num + 1} (scanned) ---\n{page_text}")
         scanned_content = "".join(scanned_parts)
         
