@@ -23,6 +23,21 @@ function resolveFilePath(filePath) {
     return abs;
 }
 
+function getAllFiles(dir) {
+    const entries = fs.readdirSync(dir, {withFileTypes: true});
+    const files = [];
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            files.push(...getAllFiles(fullPath));
+        } else {
+            files.push(fullPath);
+        }
+    }
+    return files;
+}
+
+
 // POST /document/text
 // Extracts plain text from a DOCX file.
 // Body: { filePath: "downloads/uuid_bases.docx" }
@@ -97,19 +112,19 @@ documentRouter.post('/extract-archive', async(req, res) => {
             execSync(`unar -o "${extractDir}" -f "${absPath}"`, {timeout: 60_000});
         }
         
-        // Read extracted contents (first level only, non-recursive — SEACE archives
-        // rarely contain nested directories)
-        const entries = fs.readdirSync(extractDir, { withFileTypes: true });
-        const files = entries
-            .filter(e => e.isFile())
-            .map(e => {
-                const relPath = `${DOWNLOADS_PREFIX}${extractDirName}/${e.name}`;
-                const absFile = path.join(extractDir, e.name);
+        // Read extracted contents 
+        const allFiles = getAllFiles(extractDir); // returns absolute strings
+        
+        const files = allFiles
+            .map(absFile => {
+                const relPathToExtract = path.relative(extractDir, absFile);
+                const localPath = path.join(DOWNLOADS_PREFIX + extractDirName, relPathToExtract)
+                    .replace(/\\/g, '/');
                 const stats = fs.statSync(absFile);
                 return {
-                    filename: e.name,
-                    local_path: relPath,
-                    ext: path.extname(e.name).toLowerCase(),
+                    filename: path.basename(absFile),
+                    local_path: localPath,
+                    ext: path.extname(absFile).toLowerCase(),
                     fileSizeMB: parseFloat((stats.size / (1024 * 1024)).toFixed(2)),
                 };
             });
