@@ -46,7 +46,20 @@ services:
       - AUTH_TOKEN=${SEACE_AUTH_TOKEN}
     restart: unless-stopped
   
-  # PDF EXTRACTOR
+  # REDIS — broker and result backend for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    networks:
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # PDF EXTRACTOR - FastAPI (only coordinates, does not process)
   pdf-extractor:
     build:
       context: ./pdf-extractor
@@ -57,8 +70,30 @@ services:
       - ./seace_downloads:/app/downloads
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
     networks:
       - internal
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+# CELERY WORKER - processes the extraction jobs in the background
+  celery-worker:
+    build:
+      context: ./pdf-extractor
+    container_name: celery-worker
+    command: celery -A worker.celery_app worker --concurrency=2 --pool=prefork -Q extraction --loglevel=info
+    volumes:
+      - ./seace_downloads:/app/downloads
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+    networks:
+      - internal
+    depends_on:
+      - redis
     restart: unless-stopped
 
 networks:
