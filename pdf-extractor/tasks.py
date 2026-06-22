@@ -21,6 +21,7 @@ import redis
 from worker import celery_app
 from ocr import find_anexo_page, build_subset_pdf, extract_with_mistral
 from extract import extract_regex_fields, extract_semantic_fields
+from utils import _is_permanent
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 DOWNLOADS_BASE = "/app/downloads"
@@ -131,6 +132,17 @@ def process_document(self, job_id: str, file_path: str):
     except Exception as exc:
         error_msg = str(exc)
         print(f"[{job_id[:8]}] ERROR: {error_msg}")
-        update_job(job_id, "error", 0, error=error_msg)
-        # Reintento automático con backoff de 30s
+
+        if _is_permanent(exc):
+            # Config/caller error — retrying will not help; write error and stop.
+            update_job(job_id, "error", 0, error=f"[permanent] {error_msg}")
+            return
+
+        retries_left = self.max_retries - self.request.retries
+        if retries_left <= 0:
+            # Exhausted all transient-error retries.
+            update_job(job_id, "error", 0, error=f"[max_retries] {error_msg}")
+            return
+
+        # Transient error — preserve last progress status and requeue.
         raise self.retry(exc=exc)
