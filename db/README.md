@@ -85,3 +85,84 @@ Two options (decision deferred to TASK-2):
   (`172.19.0.1:8000`). Works today since port 8000 is host-bound, but fragile.
 
 No networking changes are made in TASK-1.
+
+## Ingestion (TASK-B)
+
+Ingestion is handled by `orchestrator/ingest.py`.  The module takes a raw
+`/seace/export` JSON payload and persists it to the `seace` database with full
+idempotency.
+
+### Field mapping summary
+
+| Source (`/seace/export`) | Target table | Notes |
+|---|---|---|
+| `items[].{numero,nomenclatura,entidad,...}` | `licitaciones` | `fecha_publicacion` converted from `DD/MM/YYYY HH:MM` → ISO |
+| `meta.filtros_aplicados.departamento` | `licitaciones.departamento` | |
+| `items[].ficha.cronograma[]` | `cronograma` | inserted only for new licitaciones |
+| `items[].ficha.documentos[]` | `documentos` | `ON CONFLICT (uuid) DO NOTHING` |
+| `items[].ficha.convocatoria{}` | `convocatoria` | single dict per licitacion |
+| `items[].ficha.entidad_contratante[]` | `entidad_contratante` | |
+
+### Running the ingestion tests
+
+**Prerequisites**: `PG_PASSWORD` must be exported in your shell.
+The tests connect to `localhost:5432` by default (postgres is host-bound).
+
+```bash
+# Install deps (one-time)
+pip install -r orchestrator/requirements.txt
+
+# Run tests
+cd /opt/seace-monitor
+PG_HOST=localhost PG_PASSWORD=<your_pw> python -m pytest orchestrator/tests/ -v
+```
+
+Inside Docker (if you prefer to run tests in the container):
+```bash
+docker-compose run --rm orchestrator \
+  python -m pytest orchestrator/tests/ -v
+```
+
+### Expected test output
+
+```
+orchestrator/tests/test_ingest.py::TestParseFecha::test_full_datetime PASSED
+orchestrator/tests/test_ingest.py::TestParseFecha::test_date_only PASSED
+... (5 parse_fecha tests)
+orchestrator/tests/test_ingest.py::TestIngestPayload::test_inserts_both_licitaciones PASSED
+... (7 ingestion tests)
+orchestrator/tests/test_ingest.py::TestIdempotency::test_double_ingest_no_duplicates PASSED
+orchestrator/tests/test_ingest.py::TestIdempotency::test_double_ingest_no_duplicate_children PASSED
+... (3 FK tests)
+orchestrator/tests/test_ingest.py::TestSelectBasesAdministrativas::test_returns_only_bases_administrativas PASSED
+... (4 selection tests)
+21 passed
+```
+
+### Fixture
+
+`orchestrator/tests/fixtures/export_sample.json` — synthetic payload with 2
+licitaciones in "LA LIBERTAD":
+- `LPA-SM-TEST-001-2026-MDH/CS`: has **Bases Administrativas** + Expediente Técnico
+- `LPA-SM-TEST-002-2026-MPT/CS`: has only Expediente Técnico (tests filter)
+
+All nomenclaturas use the `LPA-SM-TEST-` prefix so they are clearly synthetic.
+
+### DB verification queries
+
+```sql
+-- Check ingested fixture data
+SELECT id, nomenclatura, departamento FROM licitaciones WHERE nomenclatura LIKE 'LPA-SM-TEST-%';
+
+-- Confirm cronograma children
+SELECT cr.etapa FROM cronograma cr
+JOIN licitaciones l ON l.id = cr.licitacion_id
+WHERE l.nomenclatura = 'LPA-SM-TEST-001-2026-MDH/CS';
+
+-- Run the selection query manually
+SELECT d.documento, d.etapa, d.filename, l.nomenclatura
+FROM documentos d
+JOIN licitaciones l ON l.id = d.licitacion_id
+WHERE LOWER(d.etapa) = 'convocatoria'
+  AND LOWER(d.documento) = 'bases administrativas';
+```

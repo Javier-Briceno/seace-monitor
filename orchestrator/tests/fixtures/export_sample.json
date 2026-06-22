@@ -1,0 +1,168 @@
+{
+  "total": 2,
+  "meta": {
+    "fuente": "SEACE",
+    "scraped_at": "2026-06-22T10:00:00.000Z",
+    "filtros_aplicados": {
+      "departamento": "LA LIBERTAD",
+      "objeto": "Obra",
+      "anio": "2026"
+    }
+  },
+  "items": [
+    {
+      "numero": "001",
+      "entidad": "MUNICIPALIDAD DISTRITAL DE HUANCHACO",
+      "fecha_publicacion": "15/06/2026 09:30",
+      "nomenclatura": "LPA-SM-TEST-001-2026-MDH/CS",
+      "reiniciado_desde": "",
+      "objeto_de_contratacion": "Obra",
+      "descripcion": "CONSTRUCCIÓN DE VÍAS DE ACCESO - FIXTURE TEST",
+      "codigo_snip": "",
+      "codigo_cui": "2468001",
+      "monto": "S/ 1,200,000.00",
+      "moneda": "Soles",
+      "version_seace": "3.0",
+      "ficha": {
+        "convocatoria": {
+          "Nomenclatura": "LPA-SM-TEST-001-2026-MDH/CS",
+          "N° Convocatoria": "1",
+          "Tipo Compra o Selección": "Licitación Pública",
+          "Normativa Aplicable": "D.S. N°344-2018-EF y sus modificatorias",
+          "Versión SEACE": "3.0",
+          "Entidad Convocante": "MUNICIPALIDAD DISTRITAL DE HUANCHACO",
+          "Direccion Legal": "AV. LA MARINA S/N - HUANCHACO",
+          "Pagina Web": "www.munihuanchaco.gob.pe",
+          "Télefono de la Entidad": "044-461001",
+          "Objeto de Contratación": "Obra",
+          "Descripción del Objeto": "CONSTRUCCIÓN DE VÍAS DE ACCESO - FIXTURE TEST",
+          "VR / VE / Cuantía de la contratación": "S/ 1,200,000.00 Soles",
+          "Fecha y Hora Publicación": "15/06/2026 09:30"
+        },
+        "cronograma": [
+          {
+            "Etapa": "Convocatoria",
+            "Lugar": null,
+            "Fecha Inicio": "15/06/2026",
+            "Fecha Fin": "15/06/2026"
+          },
+          {
+            "Etapa": "Registro de Participantes",
+            "Lugar": "www.seace.gob.pe",
+            "Fecha Inicio": "16/06/2026",
+            "Fecha Fin": "25/06/2026"
+          },
+          {
+            "Etapa": "Formulación y Absolución de Consultas",
+            "Lugar": "www.seace.gob.pe",
+            "Fecha Inicio": "16/06/2026",
+            "Fecha Fin": "20/06/2026"
+          }
+        ],
+        "documentos": [
+          {
+            "Nro": "1",
+            "Etapa": "Convocatoria",
+            "Documento": "Bases Administrativas",
+            "Archivo": {
+              "uuid": "fixture-aaaa-bbbb-cccc-0001",
+              "tipo": "pdf",
+              "filename": "BASES_LPA_TEST_001_2026.pdf",
+              "tamanio": "2.5 MB",
+              "local_path": "downloads/fixture-aaaa-bbbb-cccc-0001_BASES_LPA_TEST_001_2026.pdf",
+              "pageCount": 45,
+              "fileSizeMB": 2.5,
+              "exceedsClaudeLimit": false
+            },
+            "Fecha de publicación": "15/06/2026"
+          },
+          {
+            "Nro": "2",
+            "Etapa": "Convocatoria",
+            "Documento": "Expediente Técnico",
+            "Archivo": {
+              "uuid": "fixture-aaaa-bbbb-cccc-0002",
+              "tipo": "pdf",
+              "filename": "EXP_TECNICO_TEST_001.pdf",
+              "tamanio": "15.8 MB",
+              "local_path": "downloads/fixture-aaaa-bbbb-cccc-0002_EXP_TECNICO_TEST_001.pdf",
+              "pageCount": 210,
+              "fileSizeMB": 15.8,
+              "exceedsClaudeLimit": true
+            },
+            "Fecha de publicación": "15/06/2026"
+          }
+        ],
+        "entidad_contratante": [
+          {
+            "N° Ruc": "20131369477",
+            "Entidad Contratante": "MUNICIPALIDAD DISTRITAL DE HUANCHACO"
+          }
+        ]
+      }
+    },
+    {
+      "numero": "002",
+      "entidad": "MUNICIPALIDAD PROVINCIAL DE TRUJILLO",
+      "fecha_publicacion": "14/06/2026 14:00",
+      "nomenclatura": "LPA-SM-TEST-002-2026-MPT/CS",
+      "reiniciado_desde": "",
+      "objeto_de_contratacion": "Obra",
+      "descripcion": "REHABILITACIÓN DE PISTAS Y VEREDAS - FIXTURE TEST",
+      "codigo_snip": "",
+      "codigo_cui": "2468002",
+      "monto": "S/ 3,500,000.00",
+      "moneda": "Soles",
+      "version_seace": "3.0",
+      "ficha": {
+        "convocatoria": {
+          "Nomenclatura": "LPA-SM-TEST-002-2026-MPT/CS",
+          "N° Convocatoria": "2",
+          "Tipo Compra o Selección": "Licitación Pública",
+          "Normativa Aplicable": "D.S. N°344-2018-EF y sus modificatorias",
+          "Versión SEACE": "3.0",
+          "Entidad Convocante": "MUNICIPALIDAD PROVINCIAL DE TRUJILLO",
+          "Direccion Legal": "JR. DIEGO DE ALMAGRO 525 - TRUJILLO",
+          "Pagina Web": "www.munitrujillo.gob.pe",
+          "Télefono de la Entidad": "044-294000",
+          "Objeto de Contratación": "Obra",
+          "Descripción del Objeto": "REHABILITACIÓN DE PISTAS Y VEREDAS - FIXTURE TEST",
+          "VR / VE / Cuantía de la contratación": "S/ 3,500,000.00 Soles",
+          "Fecha y Hora Publicación": "14/06/2026 14:00"
+        },
+        "cronograma": [
+          {
+            "Etapa": "Convocatoria",
+            "Lugar": null,
+            "Fecha Inicio": "14/06/2026",
+            "Fecha Fin": "14/06/2026"
+          }
+        ],
+        "documentos": [
+          {
+            "Nro": "1",
+            "Etapa": "Convocatoria",
+            "Documento": "Expediente Técnico",
+            "Archivo": {
+              "uuid": "fixture-dddd-eeee-ffff-0003",
+              "tipo": "pdf",
+              "filename": "EXP_TECNICO_TEST_002.pdf",
+              "tamanio": "8.2 MB",
+              "local_path": "downloads/fixture-dddd-eeee-ffff-0003_EXP_TECNICO_TEST_002.pdf",
+              "pageCount": 120,
+              "fileSizeMB": 8.2,
+              "exceedsClaudeLimit": true
+            },
+            "Fecha de publicación": "14/06/2026"
+          }
+        ],
+        "entidad_contratante": [
+          {
+            "N° Ruc": "20131368618",
+            "Entidad Contratante": "MUNICIPALIDAD PROVINCIAL DE TRUJILLO"
+          }
+        ]
+      }
+    }
+  ]
+}
