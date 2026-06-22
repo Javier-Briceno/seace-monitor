@@ -65,7 +65,7 @@ services:
       context: ./pdf-extractor
     container_name: pdf-extractor
     ports:
-      - "8000:8000"
+      - "8010:8000"
     volumes:
       - ./seace_downloads:/app/downloads
     environment:
@@ -96,8 +96,35 @@ services:
       - redis
     restart: unless-stopped
 
+  # ORCHESTRATOR - Python pipeline controller (replaces n8n orchestration)
+  orchestrator:
+    build:
+      context: ./orchestrator
+    container_name: orchestrator
+    environment:
+      # Non-secret connection params
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DB: seace
+      PG_USER: javier
+      REDIS_URL: redis://redis:6379/0
+      RUNNER_URL: http://vpn:3000
+      EXTRACTOR_URL: http://pdf-extractor:8000
+      # Secrets sourced from .env
+      PG_PASSWORD: ${PG_PASSWORD}
+      RUNNER_TOKEN: ${SEACE_AUTH_TOKEN}
+    networks:
+      - internal      # reaches redis, pdf-extractor, vpn/seace-runner
+      - server_network  # reaches shared postgres container
+    depends_on:
+      - redis
+      - pdf-extractor
+    restart: "no"
+
 networks:
   internal:
     driver: bridge
     driver_opts:
       com.docker.network.bridge.mtu: "1420" # MTU is set to 1420 to avoid fragmentation issues with the VPN connection
+  server_network:
+    external: true
